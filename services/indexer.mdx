@@ -193,7 +193,35 @@ The `--fallback-kv-url` flag enables fallback to a REST KV store for historical 
 
 ## Environment Variables
 
-The indexer respects standard PostgreSQL environment variables:
+### IOTA Indexer Variables
+
+The indexer supports the following environment variables for tuning performance and behavior:
+
+**Database Connection:**
+- `DB_POOL_SIZE` - Database connection pool size (default: 100)
+- `DB_CONNECTION_TIMEOUT` - Connection timeout in seconds (default: 30)
+- `DB_STATEMENT_TIMEOUT` - SQL statement timeout in seconds (default: 3600)
+
+**Checkpoint Processing:**
+- `DOWNLOAD_QUEUE_SIZE` - Checkpoint download queue size (default: 200)
+- `INGESTION_READER_TIMEOUT_SECS` - Ingestion timeout (default: 20)
+- `CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT` - Batch data limit in bytes (default: 20000000)
+
+**Snapshots:**
+- `OBJECTS_SNAPSHOT_MIN_CHECKPOINT_LAG` - Minimum lag for snapshots (default: 300)
+
+**Pruning:**
+- `EPOCHS_TO_KEEP` - Number of epochs to retain during pruning
+- `OPTIMISTIC_PRUNER_BATCH_SIZE` - Batch size for optimistic pruning
+
+**Fallback KV Store:**
+- `FALLBACK_KV_MULTI_FETCH_BATCH_SIZE` - Multi-fetch batch size (default: 100)
+- `FALLBACK_KV_CONCURRENT_FETCHES` - Concurrent fetch operations (default: 10)
+- `FALLBACK_KV_CACHE_SIZE` - KV cache size (default: 100000)
+
+### PostgreSQL Variables
+
+The indexer also respects standard PostgreSQL environment variables:
 - `PGHOST`: Database host
 - `PGPORT`: Database port
 - `PGUSER`: Database user

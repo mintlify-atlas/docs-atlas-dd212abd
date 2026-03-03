@@ -326,6 +326,37 @@ Cache sizes can be overridden with environment variables:
 - `IOTA_CACHE_WRITEBACK_BACKPRESSURE_THRESHOLD_FOR_RPC`
 - `DISABLE_WRITEBACK_CACHE` - Set to any value to use passthrough cache
 
+### Database Environment Variables
+
+- `IOTA_DB_SYNC_TO_DISK` - Enable DB sync to disk (set to "0" to disable for testing)
+
+### Protocol Configuration
+
+- `IOTA_PROTOCOL_CONFIG_OVERRIDE_ENABLE` - Enable protocol config overrides
+- `IOTA_PROTOCOL_CONFIG_OVERRIDE_*` - Override specific protocol parameters
+
+### Telemetry and Logging
+
+All IOTA services support these environment variables for observability:
+
+**Logging:**
+- `RUST_LOG` - Logging level configuration (e.g., `info`, `debug`, `iota_node=debug`)
+- `RUST_LOG_JSON` - Enable JSON logging format
+- `RUST_LOG_FILE` - Write logs to file path
+
+**Tracing:**
+- `TRACE_FILTER` - Trace filtering
+- `CRASH_ON_PANIC` - Crash process on panic
+- `TOKIO_CONSOLE` - Enable tokio console
+- `TOKIO_SPAN_LEVEL` - Tokio span level
+- `SAMPLE_RATE` - Trace sampling rate
+- `TRACE_FLAMEGRAPH` - Enable flamegraph tracing
+- `TRACE_FILE` - Trace output file path
+
+**OpenTelemetry:**
+- `OTEL_SERVICE_NAME` - Service name for OpenTelemetry (default: "iota-node")
+- `OTLP_ENDPOINT` - OpenTelemetry OTLP endpoint
+
 ## Overload Protection
 
 ```yaml
