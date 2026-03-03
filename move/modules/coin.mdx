@@ -1,0 +1,479 @@
+---
+title: Coin Module
+description: Platform-wide fungible token implementation for the IOTA Move Framework
+---
+
+# Coin Module
+
+The `iota::coin` module provides a secure wrapper around the `Balance` type for implementing fungible tokens. It's the standard way to create and manage coins on IOTA.
+
+Source: `crates/iota-framework/packages/iota-framework/sources/coin.move`
+
+## Core Types
+
+### Coin
+
+A coin holding a balance of type `T`:
+
+```move
+public struct Coin<phantom T> has key, store {
+    id: UID,
+    balance: Balance<T>,
+}
+```
+
+The `Coin` type:
+- Is transferable and storable
+- Wraps a `Balance<T>` to make it transferable
+- Has `key + store` abilities
+
+### TreasuryCap
+
+Capability for minting and burning coins:
+
+```move
+public struct TreasuryCap<phantom T> has key, store {
+    id: UID,
+    total_supply: Supply<T>,
+}
+```
+
+Only the holder of `TreasuryCap` can mint or burn coins.
+
+### CoinMetadata
+
+Metadata for displaying coin information:
+
+```move
+public struct CoinMetadata<phantom T> has key, store {
+    id: UID,
+    decimals: u8,
+    name: string::String,
+    symbol: ascii::String,
+    description: string::String,
+    icon_url: Option<Url>,
+}
+```
+
+### DenyCapV1
+
+Capability for regulated coins to deny specific addresses:
+
+```move
+public struct DenyCapV1<phantom T> has key, store {
+    id: UID,
+    allow_global_pause: bool,
+}
+```
+
+## Creating a Currency
+
+### create_currency
+
+Create a new coin type with metadata:
+
+<ParamField path="witness" type="T" required>
+  One-time witness proving module authority
+</ParamField>
+
+<ParamField path="decimals" type="u8" required>
+  Number of decimal places (e.g., 9 for IOTA)
+</ParamField>
+
+<ParamField path="symbol" type="vector<u8>" required>
+  Coin symbol (e.g., "IOTA")
+</ParamField>
+
+<ParamField path="name" type="vector<u8>" required>
+  Coin name (e.g., "IOTA Token")
+</ParamField>
+
+<ParamField path="description" type="vector<u8>" required>
+  Coin description
+</ParamField>
+
+<ParamField path="icon_url" type="Option<Url>" required>
+  Optional URL for coin icon
+</ParamField>
+
+<ParamField path="ctx" type="&mut TxContext" required>
+  Transaction context
+</ParamField>
+
+```move
+public fun create_currency<T: drop>(
+    witness: T,
+    decimals: u8,
+    symbol: vector<u8>,
+    name: vector<u8>,
+    description: vector<u8>,
+    icon_url: Option<Url>,
+    ctx: &mut TxContext,
+): (TreasuryCap<T>, CoinMetadata<T>)
+```
+
+Example:
+```move
+module example::my_coin {
+    use iota::coin::{Self, TreasuryCap};
+    use iota::url;
+
+    public struct MY_COIN has drop {}
+
+    fun init(witness: MY_COIN, ctx: &mut TxContext) {
+        let (treasury, metadata) = coin::create_currency(
+            witness,
+            9,  // 9 decimals
+            b"MYCOIN",
+            b"My Coin",
+            b"A custom coin on IOTA",
+            option::none(),
+            ctx
+        );
+        
+        transfer::public_freeze_object(metadata);
+        transfer::public_transfer(treasury, ctx.sender());
+    }
+}
+```
+
+### create_regulated_currency_v1
+
+Create a regulated currency with deny list support:
+
+```move
+public fun create_regulated_currency_v1<T: drop>(
+    witness: T,
+    decimals: u8,
+    symbol: vector<u8>,
+    name: vector<u8>,
+    description: vector<u8>,
+    icon_url: Option<Url>,
+    allow_global_pause: bool,
+    ctx: &mut TxContext,
+): (TreasuryCap<T>, DenyCapV1<T>, CoinMetadata<T>)
+```
+
+## Minting and Burning
+
+### mint
+
+Mint new coins and increase total supply:
+
+<ParamField path="cap" type="&mut TreasuryCap<T>" required>
+  Treasury capability
+</ParamField>
+
+<ParamField path="value" type="u64" required>
+  Amount to mint
+</ParamField>
+
+<ParamField path="ctx" type="&mut TxContext" required>
+  Transaction context
+</ParamField>
+
+```move
+public fun mint<T>(cap: &mut TreasuryCap<T>, value: u64, ctx: &mut TxContext): Coin<T>
+```
+
+Example:
+```move
+public fun mint_coins(treasury: &mut TreasuryCap<MY_COIN>, amount: u64, ctx: &mut TxContext): Coin<MY_COIN> {
+    coin::mint(treasury, amount, ctx)
+}
+```
+
+### mint_and_transfer
+
+Mint coins and transfer them to a recipient:
+
+<ParamField path="c" type="&mut TreasuryCap<T>" required>
+  Treasury capability
+</ParamField>
+
+<ParamField path="amount" type="u64" required>
+  Amount to mint
+</ParamField>
+
+<ParamField path="recipient" type="address" required>
+  Address to receive the coins
+</ParamField>
+
+<ParamField path="ctx" type="&mut TxContext" required>
+  Transaction context
+</ParamField>
+
+```move
+public entry fun mint_and_transfer<T>(
+    c: &mut TreasuryCap<T>,
+    amount: u64,
+    recipient: address,
+    ctx: &mut TxContext,
+)
+```
+
+### burn
+
+Destroy coins and decrease total supply:
+
+<ParamField path="cap" type="&mut TreasuryCap<T>" required>
+  Treasury capability
+</ParamField>
+
+<ParamField path="c" type="Coin<T>" required>
+  Coin to burn
+</ParamField>
+
+```move
+public entry fun burn<T>(cap: &mut TreasuryCap<T>, c: Coin<T>): u64
+```
+
+## Coin Operations
+
+### value
+
+Get the value of a coin:
+
+<ParamField path="self" type="&Coin<T>" required>
+  Coin to query
+</ParamField>
+
+```move
+public fun value<T>(self: &Coin<T>): u64
+```
+
+### split
+
+Split a coin into two:
+
+<ParamField path="self" type="&mut Coin<T>" required>
+  Coin to split
+</ParamField>
+
+<ParamField path="split_amount" type="u64" required>
+  Amount for the new coin
+</ParamField>
+
+<ParamField path="ctx" type="&mut TxContext" required>
+  Transaction context
+</ParamField>
+
+```move
+public fun split<T>(self: &mut Coin<T>, split_amount: u64, ctx: &mut TxContext): Coin<T>
+```
+
+Example:
+```move
+let mut coin = coin::mint(&mut treasury, 1000, ctx);
+let smaller_coin = coin.split(300, ctx);  // coin now has 700, smaller_coin has 300
+```
+
+### join
+
+Merge two coins:
+
+<ParamField path="self" type="&mut Coin<T>" required>
+  Coin to merge into
+</ParamField>
+
+<ParamField path="c" type="Coin<T>" required>
+  Coin to merge from (will be destroyed)
+</ParamField>
+
+```move
+public entry fun join<T>(self: &mut Coin<T>, c: Coin<T>)
+```
+
+Example:
+```move
+let mut coin1 = coin::mint(&mut treasury, 500, ctx);
+let coin2 = coin::mint(&mut treasury, 300, ctx);
+coin1.join(coin2);  // coin1 now has 800
+```
+
+### divide_into_n
+
+Divide a coin into `n` equal parts:
+
+<ParamField path="self" type="&mut Coin<T>" required>
+  Coin to divide
+</ParamField>
+
+<ParamField path="n" type="u64" required>
+  Number of parts to divide into
+</ParamField>
+
+<ParamField path="ctx" type="&mut TxContext" required>
+  Transaction context
+</ParamField>
+
+```move
+public fun divide_into_n<T>(self: &mut Coin<T>, n: u64, ctx: &mut TxContext): vector<Coin<T>>
+```
+
+### zero
+
+Create a coin with zero value:
+
+<ParamField path="ctx" type="&mut TxContext" required>
+  Transaction context
+</ParamField>
+
+```move
+public fun zero<T>(ctx: &mut TxContext): Coin<T>
+```
+
+### destroy_zero
+
+Destroy a coin with zero value:
+
+<ParamField path="c" type="Coin<T>" required>
+  Coin with value 0
+</ParamField>
+
+```move
+public fun destroy_zero<T>(c: Coin<T>)
+```
+
+## Balance Conversions
+
+### from_balance
+
+Wrap a balance into a coin:
+
+<ParamField path="balance" type="Balance<T>" required>
+  Balance to wrap
+</ParamField>
+
+<ParamField path="ctx" type="&mut TxContext" required>
+  Transaction context
+</ParamField>
+
+```move
+public fun from_balance<T>(balance: Balance<T>, ctx: &mut TxContext): Coin<T>
+```
+
+### into_balance
+
+Unwrap a coin into a balance:
+
+<ParamField path="coin" type="Coin<T>" required>
+  Coin to unwrap
+</ParamField>
+
+```move
+public fun into_balance<T>(coin: Coin<T>): Balance<T>
+```
+
+## Supply Management
+
+### total_supply
+
+Get the total supply of a coin:
+
+<ParamField path="cap" type="&TreasuryCap<T>" required>
+  Treasury capability
+</ParamField>
+
+```move
+public fun total_supply<T>(cap: &TreasuryCap<T>): u64
+```
+
+### treasury_into_supply
+
+Convert treasury cap into a supply (irreversible):
+
+<ParamField path="treasury" type="TreasuryCap<T>" required>
+  Treasury capability to convert
+</ParamField>
+
+```move
+public fun treasury_into_supply<T>(treasury: TreasuryCap<T>): Supply<T>
+```
+
+## Metadata Management
+
+### get_decimals
+
+Get the decimals from coin metadata:
+
+```move
+public fun get_decimals<T>(metadata: &CoinMetadata<T>): u8
+```
+
+### get_name
+
+```move
+public fun get_name<T>(metadata: &CoinMetadata<T>): string::String
+```
+
+### get_symbol
+
+```move
+public fun get_symbol<T>(metadata: &CoinMetadata<T>): ascii::String
+```
+
+### get_description
+
+```move
+public fun get_description<T>(metadata: &CoinMetadata<T>): string::String
+```
+
+### get_icon_url
+
+```move
+public fun get_icon_url<T>(metadata: &CoinMetadata<T>): Option<Url>
+```
+
+## Complete Example
+
+```move
+module example::game_token {
+    use iota::coin::{Self, TreasuryCap, Coin};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    public struct GAME_TOKEN has drop {}
+
+    fun init(witness: GAME_TOKEN, ctx: &mut TxContext) {
+        let (treasury, metadata) = coin::create_currency(
+            witness,
+            9,
+            b"GAME",
+            b"Game Token",
+            b"In-game currency for my awesome game",
+            option::none(),
+            ctx
+        );
+        
+        transfer::public_freeze_object(metadata);
+        transfer::public_transfer(treasury, ctx.sender());
+    }
+
+    public fun mint_rewards(
+        treasury: &mut TreasuryCap<GAME_TOKEN>,
+        amount: u64,
+        recipient: address,
+        ctx: &mut TxContext
+    ) {
+        let coin = coin::mint(treasury, amount, ctx);
+        transfer::public_transfer(coin, recipient);
+    }
+
+    public fun burn_tokens(
+        treasury: &mut TreasuryCap<GAME_TOKEN>,
+        coin: Coin<GAME_TOKEN>
+    ): u64 {
+        coin::burn(treasury, coin)
+    }
+}
+```
+
+## Error Codes
+
+```move
+const EBadWitness: u64 = 0;  // Not a one-time witness
+const EInvalidArg: u64 = 1;  // Invalid arguments
+const ENotEnough: u64 = 2;  // Insufficient balance
+const EGlobalPauseNotAllowed: u64 = 3;  // Global pause not allowed
+```

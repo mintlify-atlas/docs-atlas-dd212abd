@@ -1,0 +1,896 @@
+---
+title: "Testing with the CLI"
+description: "Comprehensive guide to testing Move packages and transactions with the IOTA CLI"
+---
+
+The IOTA CLI provides comprehensive testing tools for Move packages, transactions, and network interactions.
+
+## Move Unit Testing
+
+### Running Tests
+
+Execute Move unit tests:
+
+```bash
+iota move test [OPTIONS] [FILTER]
+```
+
+#### Basic Testing
+
+<Steps>
+  <Step title="Write tests">
+    Create tests in your Move modules:
+    
+    ```move title="sources/my_module.move"
+    module my_package::my_module {
+        use iota::coin::Coin;
+        use iota::iota::IOTA;
+        use iota::test_scenario;
+    
+        #[test]
+        fun test_create_and_transfer() {
+            let mut scenario = test_scenario::begin(@0x1);
+            
+            // Test logic here
+            
+            test_scenario::end(scenario);
+        }
+    
+        #[test]
+        #[expected_failure(abort_code = EInsufficientBalance)]
+        fun test_insufficient_balance() {
+            // Test error case
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Run all tests">
+    ```bash
+    iota move test
+    ```
+    
+    Output:
+    ```
+    INCLUDING DEPENDENCY Iota
+    INCLUDING DEPENDENCY MoveStdlib
+    BUILDING my_package
+    Running Move unit tests
+    [ PASS    ] 0x0::my_module::test_create_and_transfer
+    [ PASS    ] 0x0::my_module::test_insufficient_balance
+    Test result: OK. Total tests: 2; passed: 2; failed: 0
+    ```
+  </Step>
+
+  <Step title="Run specific tests">
+    ```bash
+    # Match by name pattern
+    iota move test "test_transfer"
+    
+    # Run all tests in a module
+    iota move test "my_module::"
+    ```
+  </Step>
+</Steps>
+
+### Test Options
+
+#### Parallel Execution
+
+```bash
+iota move test --num-threads 4
+```
+
+Run tests in parallel for faster execution.
+
+#### Gas Limits
+
+```bash
+iota move test --gas-limit 100000000
+```
+
+Set maximum gas per test (useful for expensive operations).
+
+#### List Tests
+
+```bash
+iota move test --list
+```
+
+Display all available tests without running them:
+
+```
+0x0::my_module::test_create_and_transfer
+0x0::my_module::test_insufficient_balance
+0x0::my_module::test_upgrade
+0x0::helpers::test_utils
+```
+
+#### Coverage
+
+```bash
+iota move test --coverage
+```
+
+Collect code coverage information during test execution.
+
+### Test Patterns
+
+#### Basic Test
+
+```move
+#[test]
+fun test_simple_operation() {
+    let value = 42;
+    assert!(value == 42, 0);
+}
+```
+
+#### Expected Failure
+
+```move
+#[test]
+#[expected_failure(abort_code = EInvalidAmount)]
+fun test_invalid_amount() {
+    // This test passes if it aborts with EInvalidAmount
+    abort EInvalidAmount
+}
+```
+
+#### Test-Only Functions
+
+```move
+#[test_only]
+public fun create_test_object(ctx: &mut TxContext): TestObject {
+    TestObject { id: object::new(ctx) }
+}
+
+#[test]
+fun test_with_helper() {
+    let ctx = tx_context::dummy();
+    let obj = create_test_object(&mut ctx);
+    // Test obj...
+}
+```
+
+#### Test Scenarios
+
+```move
+use iota::test_scenario::{Self as ts, Scenario};
+
+#[test]
+fun test_multi_transaction() {
+    let admin = @0xAD;
+    let user = @0x1;
+    
+    let mut scenario = ts::begin(admin);
+    
+    // Transaction 1: Admin creates object
+    {
+        create_object(ts::ctx(&mut scenario));
+    };
+    
+    // Transaction 2: User interacts
+    ts::next_tx(&mut scenario, user);
+    {
+        let obj = ts::take_shared<MyObject>(&scenario);
+        use_object(&mut obj);
+        ts::return_shared(obj);
+    };
+    
+    ts::end(scenario);
+}
+```
+
+## Transaction Testing
+
+### Dry Run
+
+Simulate transaction execution without committing:
+
+```bash
+iota client call [ARGS] --dry-run
+```
+
+#### Example
+
+```bash
+iota client call \
+  --package 0x2 \
+  --module coin \
+  --function transfer \
+  --type-args 0x2::iota::IOTA \
+  --args 0xCOIN 0xRECIPIENT 1000 \
+  --gas-budget 10000000 \
+  --dry-run
+```
+
+Output:
+```json
+{
+  "effects": {
+    "status": { "status": "success" },
+    "gasUsed": {
+      "computationCost": "1000000",
+      "storageCost": "2000000",
+      "storageRebate": "500000"
+    }
+  },
+  "events": [],
+  "balanceChanges": [
+    {
+      "owner": "0x...",
+      "coinType": "0x2::iota::IOTA",
+      "amount": "-1000"
+    }
+  ]
+}
+```
+
+### Dev Inspect
+
+Inspect transaction execution with detailed debugging:
+
+```bash
+iota client call [ARGS] --dev-inspect
+```
+
+#### Example
+
+```bash
+iota client call \
+  --package 0xPKG \
+  --module my_module \
+  --function debug_function \
+  --args 0xOBJ \
+  --dev-inspect
+```
+
+Output includes:
+- Return values
+- Events emitted
+- Gas usage
+- Object changes
+- Error details (if any)
+
+### Transaction Digest
+
+Compute transaction digest without executing:
+
+```bash
+iota client call [ARGS] --tx-digest
+```
+
+Output:
+```
+Transaction Digest: 5KzKVq7qP2xH8FwkQJqxhPNBjkFVjM3xZoJpP5KwqAkH
+```
+
+### Serialized Transactions
+
+Serialize transaction for later execution:
+
+<Steps>
+  <Step title="Serialize unsigned">
+    ```bash
+    iota client call \
+      --package 0x2 \
+      --module coin \
+      --function transfer \
+      --type-args 0x2::iota::IOTA \
+      --args 0xCOIN 0xRECIPIENT 1000 \
+      --gas-budget 10000000 \
+      --serialize-unsigned-transaction
+    ```
+    
+    Output:
+    ```
+    AAACAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAWNvaW4IdHJhbnNmZXIBAQAAAQEA...
+    ```
+  </Step>
+
+  <Step title="Sign transaction">
+    ```bash
+    iota keytool sign \
+      --address alice \
+      --data AAACA...
+    ```
+  </Step>
+
+  <Step title="Execute signed transaction">
+    ```bash
+    iota client execute-signed-tx \
+      --tx-bytes AAACA... \
+      --signatures AQEDAgQF...
+    ```
+  </Step>
+</Steps>
+
+## Local Network Testing
+
+### Quick Test Cycle
+
+<Steps>
+  <Step title="Start local network">
+    ```bash
+    # Terminal 1
+    iota start --force-regenesis --with-faucet
+    ```
+  </Step>
+
+  <Step title="Setup client">
+    ```bash
+    # Terminal 2
+    iota client new-env --alias localnet --rpc http://127.0.0.1:9000
+    iota client switch --env localnet
+    iota client new-address ed25519
+    iota client faucet
+    ```
+  </Step>
+
+  <Step title="Test package">
+    ```bash
+    cd my_package
+    iota move test
+    iota client publish --gas-budget 100000000
+    ```
+  </Step>
+
+  <Step title="Test interactions">
+    ```bash
+    iota client call \
+      --package 0xPKG \
+      --module my_module \
+      --function test_function \
+      --gas-budget 10000000
+    ```
+  </Step>
+
+  <Step title="Iterate">
+    ```bash
+    # Make changes to code
+    iota move test
+    
+    # Restart for clean state
+    # Terminal 1: Ctrl+C, then:
+    iota start --force-regenesis --with-faucet
+    
+    # Terminal 2: Republish
+    iota client publish --gas-budget 100000000
+    ```
+  </Step>
+</Steps>
+
+### Persistent Testing
+
+Test with state preservation:
+
+<Steps>
+  <Step title="Create persistent network">
+    ```bash
+    iota genesis --force --with-faucet
+    iota start
+    ```
+  </Step>
+
+  <Step title="Publish v1">
+    ```bash
+    iota client publish --gas-budget 100000000
+    # Note Package ID and UpgradeCap ID
+    ```
+  </Step>
+
+  <Step title="Test v1">
+    ```bash
+    iota client call --package 0xPKG --module my_module --function v1_function
+    ```
+  </Step>
+
+  <Step title="Modify and upgrade">
+    ```bash
+    # Edit code
+    iota move test
+    
+    # Upgrade
+    iota client upgrade \
+      --upgrade-capability 0xCAP \
+      --gas-budget 100000000
+    ```
+  </Step>
+
+  <Step title="Test v2">
+    ```bash
+    iota client call --package 0xNEW_PKG --module my_module --function v2_function
+    ```
+  </Step>
+</Steps>
+
+## Integration Testing
+
+### Multi-Package Testing
+
+Test interactions between multiple packages:
+
+<Steps>
+  <Step title="Publish dependencies">
+    ```bash
+    cd package_a
+    iota client publish --gas-budget 100000000
+    # Note Package A ID
+    
+    cd ../package_b
+    iota client publish --gas-budget 100000000
+    # Note Package B ID
+    ```
+  </Step>
+
+  <Step title="Update main package">
+    ```toml title="Move.toml"
+    [dependencies]
+    PackageA = { address = "0xPKG_A_ID" }
+    PackageB = { address = "0xPKG_B_ID" }
+    ```
+  </Step>
+
+  <Step title="Test integration">
+    ```bash
+    cd ../main_package
+    iota move test
+    iota client publish --gas-budget 100000000
+    ```
+  </Step>
+</Steps>
+
+### Multi-Signature Testing
+
+Test MultiSig transactions:
+
+<Steps>
+  <Step title="Create MultiSig address">
+    ```bash
+    iota keytool multisig-address \
+      --threshold 2 \
+      --pks <PK1> <PK2> <PK3> \
+      --weights 1 1 1
+    # Note MultiSig address
+    ```
+  </Step>
+
+  <Step title="Fund MultiSig">
+    ```bash
+    iota client transfer \
+      --to 0xMULTISIG \
+      --object-id 0xCOIN \
+      --gas-budget 5000000
+    ```
+  </Step>
+
+  <Step title="Create transaction">
+    ```bash
+    iota client call \
+      --package 0x2 \
+      --module coin \
+      --function transfer \
+      --args 0xMULTISIG_COIN 0xRECIPIENT 1000 \
+      --gas-budget 10000000 \
+      --sender 0xMULTISIG \
+      --serialize-unsigned-transaction
+    # Save TX_BYTES
+    ```
+  </Step>
+
+  <Step title="Collect signatures">
+    ```bash
+    # Signer 1
+    iota keytool sign --address alice --data <TX_BYTES>
+    # Save SIG1
+    
+    # Signer 2
+    iota keytool sign --address bob --data <TX_BYTES>
+    # Save SIG2
+    ```
+  </Step>
+
+  <Step title="Combine and execute">
+    ```bash
+    iota keytool multisig-combine-partial-sig \
+      --sigs <SIG1> <SIG2> \
+      --pks <PK1> <PK2> <PK3> \
+      --weights 1 1 1 \
+      --threshold 2
+    # Save MULTISIG
+    
+    iota client execute-signed-tx \
+      --tx-bytes <TX_BYTES> \
+      --signatures <MULTISIG>
+    ```
+  </Step>
+</Steps>
+
+## Replay Testing
+
+### Replay Transactions
+
+Replay past transactions for debugging:
+
+```bash
+iota client replay-transaction \
+  --tx-digest <DIGEST> \
+  --gas-info \
+  --ptb-info
+```
+
+Output:
+```
+Replaying transaction: 5KzKVq7qP2xH8FwkQJqxhPNBjkFVjM3xZoJpP5KwqAkH
+
+Effects:
+  Status: Success
+  Gas Used: 1000000 NANOS
+  
+PTB Commands:
+  0: MoveCall 0x2::coin::transfer
+  1: TransferObjects
+
+Events:
+  CoinBalanceChange { ... }
+```
+
+### Replay Batches
+
+Replay multiple transactions:
+
+<Steps>
+  <Step title="Create digest file">
+    ```bash
+    cat > digests.txt << EOF
+    5KzKVq7qP2xH8FwkQJqxhPNBjkFVjM3xZoJpP5KwqAkH
+    7MpRxT9uU4zL0NqEqO5kWgYiDcFxOsZrPbMdNhKsRcKo
+    9PrSyV0wX5aM1OrGsQ6mYiZkEgHzQvCsTdOfPjMuTeLq
+    EOF
+    ```
+  </Step>
+
+  <Step title="Replay batch">
+    ```bash
+    iota client replay-batch \
+      --path digests.txt \
+      --terminate-early
+    ```
+  </Step>
+</Steps>
+
+### Replay Checkpoints
+
+Replay transactions from checkpoint range:
+
+```bash
+iota client replay-checkpoint \
+  --start 100 \
+  --end 200 \
+  --terminate-early
+```
+
+## Coverage Analysis
+
+### Collect Coverage
+
+<Steps>
+  <Step title="Run tests with coverage">
+    ```bash
+    iota move test --coverage
+    ```
+  </Step>
+
+  <Step title="View coverage summary">
+    ```bash
+    iota move coverage --summary
+    ```
+    
+    Output:
+    ```
+    Module 0x0::my_module
+    ├── % covered: 87.5
+    ├── uncovered locations:
+    │   ├── my_module.move:42
+    │   └── my_module.move:58
+    
+    Module 0x0::helpers
+    ├── % covered: 100.0
+    └── uncovered locations: none
+    ```
+  </Step>
+
+  <Step title="Export to CSV">
+    ```bash
+    iota move coverage --output-csv coverage.csv
+    ```
+  </Step>
+
+  <Step title="Analyze specific module">
+    ```bash
+    iota move coverage --module my_module
+    ```
+  </Step>
+</Steps>
+
+## Gas Profiling
+
+### Profile Transaction
+
+```bash
+iota client profile-transaction \
+  --tx-digest <DIGEST> \
+  --profile-output ./profile.json
+```
+
+This generates a flamegraph-compatible JSON file showing gas usage breakdown.
+
+### Analyze Profile
+
+<Steps>
+  <Step title="Generate profile">
+    ```bash
+    iota client profile-transaction \
+      --tx-digest 5KzKVq7qP2xH8FwkQJqxhPNBjkFVjM3xZoJpP5KwqAkH \
+      --profile-output ./gas_profile.json
+    ```
+  </Step>
+
+  <Step title="View in speedscope">
+    Open https://www.speedscope.app/ and load `gas_profile.json`.
+  </Step>
+</Steps>
+
+## Bytecode Verification
+
+### Verify Meter
+
+Check bytecode complexity limits:
+
+```bash
+iota client verify-bytecode-meter [OPTIONS]
+```
+
+#### Options
+
+- `--package <PATH>` - Package to verify
+- `--protocol-version <VERSION>` - Protocol version
+- `--module <PATH>...` - Specific modules to verify
+
+#### Examples
+
+<Steps>
+  <Step title="Verify package">
+    ```bash
+    iota client verify-bytecode-meter --package ./my_package
+    ```
+    
+    Output:
+    ```
+    Verifying package: my_package
+    Module my_module: OK (12345/16000 units)
+    Module helpers: OK (3456/16000 units)
+    All modules passed bytecode verification
+    ```
+  </Step>
+
+  <Step title="Verify specific module">
+    ```bash
+    iota client verify-bytecode-meter \
+      --module ./build/my_package/bytecode_modules/my_module.mv
+    ```
+  </Step>
+
+  <Step title="Check against protocol version">
+    ```bash
+    iota client verify-bytecode-meter \
+      --package ./my_package \
+      --protocol-version 40
+    ```
+  </Step>
+</Steps>
+
+### Verify Source
+
+Verify on-chain bytecode matches local source:
+
+```bash
+iota client verify-source [OPTIONS] [PACKAGE_PATH]
+```
+
+#### Options
+
+- `--verify-deps` - Also verify dependencies
+- `--skip-source` - Only verify dependencies
+- `--address-override <ADDRESS>` - Override package address
+
+#### Example
+
+```bash
+iota client verify-source ./my_package --verify-deps
+```
+
+Output:
+```
+Verifying package: my_package (0xPKG)
+  Module my_module: OK
+  Module helpers: OK
+
+Verifying dependencies:
+  Iota (0x2): OK
+  MoveStdlib (0x1): OK
+
+All packages verified successfully
+```
+
+## Testing Best Practices
+
+### Unit Test Guidelines
+
+1. **Test all public functions**:
+   ```move
+   #[test]
+   fun test_public_function() { /* ... */ }
+   ```
+
+2. **Test error conditions**:
+   ```move
+   #[test]
+   #[expected_failure(abort_code = EError)]
+   fun test_error_case() { /* ... */ }
+   ```
+
+3. **Use test-only helpers**:
+   ```move
+   #[test_only]
+   public fun setup_test() { /* ... */ }
+   ```
+
+4. **Test scenarios**:
+   ```move
+   #[test]
+   fun test_multi_tx_scenario() {
+       let mut scenario = test_scenario::begin(@0x1);
+       // Multi-transaction test
+       test_scenario::end(scenario);
+   }
+   ```
+
+### Integration Test Workflow
+
+1. **Start clean network**:
+   ```bash
+   iota start --force-regenesis --with-faucet
+   ```
+
+2. **Deploy all packages**:
+   ```bash
+   # Deploy in dependency order
+   cd base_package && iota client publish
+   cd ../dependent_package && iota client publish
+   ```
+
+3. **Run integration tests**:
+   ```bash
+   ./test_integration.sh
+   ```
+
+4. **Verify state**:
+   ```bash
+   iota client object <OBJECT_ID>
+   ```
+
+### Testnet Testing
+
+1. **Deploy to testnet**:
+   ```bash
+   iota client switch --env testnet
+   iota client publish --gas-budget 100000000
+   ```
+
+2. **Automated testing**:
+   ```bash
+   # Create test script
+   ./run_testnet_tests.sh
+   ```
+
+3. **Monitor results**:
+   ```bash
+   iota client tx-block <DIGEST>
+   ```
+
+### Continuous Integration
+
+Integrate testing into CI/CD:
+
+```yaml title=".github/workflows/test.yml"
+name: Test
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Install IOTA CLI
+        run: |
+          cargo install --path crates/iota
+      
+      - name: Run Move tests
+        run: |
+          cd my_package
+          iota move test
+      
+      - name: Start local network
+        run: |
+          iota start --force-regenesis &
+          sleep 10
+      
+      - name: Integration tests
+        run: |
+          ./run_integration_tests.sh
+```
+
+## Troubleshooting
+
+### Test Failures
+
+**Error**: `Test exceeded gas limit`
+
+Solution:
+```bash
+iota move test --gas-limit 200000000
+```
+
+**Error**: `Test timed out`
+
+Check for infinite loops or expensive operations.
+
+### Dry Run Issues
+
+**Error**: `Insufficient gas`
+
+Solution:
+```bash
+# Increase gas budget
+iota client call [...] --gas-budget 20000000 --dry-run
+```
+
+**Error**: `Object not found`
+
+Verify object exists and is owned by sender:
+```bash
+iota client object <OBJECT_ID>
+```
+
+### Network Issues
+
+**Error**: `Connection refused`
+
+Ensure network is running:
+```bash
+# Start network
+iota start --force-regenesis
+
+# Verify connection
+curl http://127.0.0.1:9000
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Move Commands" icon="code" href="/cli/move-commands">
+    Build and publish packages
+  </Card>
+  <Card title="Transaction Builder" icon="block-brick" href="/cli/transaction-builder">
+    Create complex transactions
+  </Card>
+  <Card title="Local Network" icon="network-wired" href="/cli/local-network">
+    Set up testing environment
+  </Card>
+  <Card title="Client Commands" icon="terminal" href="/cli/client-commands">
+    Interact with the network
+  </Card>
+</CardGroup>

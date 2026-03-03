@@ -1,0 +1,517 @@
+---
+title: Hot Potato Pattern
+description: Enforce function call sequences using types without the drop ability
+---
+
+# Hot Potato Pattern
+
+The Hot Potato pattern uses a type without the `drop` ability to force the caller to consume it in a specific way. Since the type cannot be dropped or stored, it must be explicitly handled, making it impossible to ignore.
+
+## Core Concept
+
+A "hot potato" type:
+- Has NO `drop` ability (cannot be discarded)
+- Has NO `key` or `store` abilities (cannot be stored)
+- Must be consumed by calling a specific function
+- Forces a particular execution flow
+
+### Basic Hot Potato
+
+```move
+module example::basic_potato {
+    /// Hot potato - no abilities means it MUST be consumed
+    public struct Potato {
+        value: u64,
+    }
+
+    /// Create a potato
+    public fun create(value: u64): Potato {
+        Potato { value }
+    }
+
+    /// The ONLY way to consume the potato
+    public fun consume(potato: Potato): u64 {
+        let Potato { value } = potato;
+        value
+    }
+
+    /// Example usage
+    public fun example() {
+        let potato = create(42);
+        // MUST call consume, cannot drop or store
+        let value = consume(potato);
+    }
+}
+```
+
+## Borrow Pattern from Framework
+
+The `iota::borrow` module uses hot potato:
+
+```move
+use iota::borrow::{Self, Referent, Borrow};
+
+public struct MyObject has key, store {
+    id: UID,
+    value: u64,
+}
+
+public fun use_borrowed_object(ctx: &mut TxContext) {
+    let mut referent = borrow::new(MyObject {
+        id: object::new(ctx),
+        value: 100,
+    }, ctx);
+    
+    // Borrow returns the object AND a hot potato
+    let (mut obj, potato) = borrow::borrow(&mut referent);
+    
+    // Modify the object
+    obj.value = 200;
+    
+    // MUST return the object with the potato
+    borrow::put_back(&mut referent, obj, potato);
+    
+    let MyObject { id, value: _ } = borrow::destroy(referent);
+    id.delete();
+}
+```
+
+## Transfer Request Pattern
+
+The kiosk module uses hot potato for transfer policies:
+
+```move
+use iota::kiosk::{Self, Kiosk};
+use iota::transfer_policy::{Self, TransferPolicy, TransferRequest};
+
+public struct NFT has key, store {
+    id: UID,
+}
+
+public fun purchase_nft(
+    kiosk: &mut Kiosk,
+    nft_id: ID,
+    payment: Coin<IOTA>,
+    policy: &TransferPolicy<NFT>,
+    ctx: &mut TxContext
+) {
+    // purchase returns NFT and TransferRequest (hot potato)
+    let (nft, request) = kiosk::purchase<NFT>(kiosk, nft_id, payment);
+    
+    // MUST confirm the request with policy
+    transfer_policy::confirm_request(policy, request);
+    
+    transfer::public_transfer(nft, ctx.sender());
+}
+```
+
+## Enforcing Workflows
+
+### Multi-Step Process
+
+```move
+module example::workflow {
+    use iota::object::{Self, UID};
+    use iota::coin::{Self, Coin};
+    use iota::iota::IOTA;
+
+    public struct Order has key {
+        id: UID,
+        items: vector<u64>,
+        total: u64,
+    }
+
+    /// Hot potato to enforce workflow
+    public struct Payment {
+        amount: u64,
+        order_id: ID,
+    }
+
+    const EInsufficientPayment: u64 = 0;
+    const EWrongOrder: u64 = 1;
+
+    public fun create_order(
+        items: vector<u64>,
+        total: u64,
+        ctx: &mut TxContext
+    ): Order {
+        Order {
+            id: object::new(ctx),
+            items,
+            total,
+        }
+    }
+
+    /// Step 1: Initiate payment (returns hot potato)
+    public fun initiate_payment(
+        order: &Order,
+        coin: Coin<IOTA>
+    ): Payment {
+        assert!(coin.value() >= order.total, EInsufficientPayment);
+        
+        // Coin is consumed, payment hot potato is created
+        let _ = coin;  // Would actually process the coin
+        
+        Payment {
+            amount: order.total,
+            order_id: object::id(order),
+        }
+    }
+
+    /// Step 2: Complete payment (consumes hot potato)
+    public fun complete_payment(
+        order: Order,
+        payment: Payment,
+    ) {
+        let Payment { amount, order_id } = payment;
+        assert!(object::id(&order) == order_id, EWrongOrder);
+        
+        // Process order
+        let Order { id, items: _, total: _ } = order;
+        id.delete();
+    }
+}
+```
+
+## Receipt Pattern
+
+```move
+module example::receipts {
+    use iota::object::{Self, UID, ID};
+    use iota::coin::{Self, Coin};
+    use iota::iota::IOTA;
+
+    public struct Store has key {
+        id: UID,
+        inventory: u64,
+    }
+
+    /// Hot potato receipt
+    public struct PurchaseReceipt {
+        store_id: ID,
+        quantity: u64,
+    }
+
+    /// Purchase returns a receipt that must be fulfilled
+    public fun purchase(
+        store: &mut Store,
+        quantity: u64,
+        payment: Coin<IOTA>,
+    ): PurchaseReceipt {
+        assert!(store.inventory >= quantity, 0);
+        store.inventory = store.inventory - quantity;
+        
+        // Process payment
+        transfer::public_transfer(payment, @treasury);
+        
+        // Return hot potato receipt
+        PurchaseReceipt {
+            store_id: object::id(store),
+            quantity,
+        }
+    }
+
+    /// Fulfill the receipt to get items
+    public fun fulfill(
+        receipt: PurchaseReceipt,
+        recipient: address,
+        ctx: &mut TxContext
+    ) {
+        let PurchaseReceipt { store_id: _, quantity } = receipt;
+        
+        // Create and send items
+        let mut i = 0;
+        while (i < quantity) {
+            // Create item
+            i = i + 1;
+        };
+    }
+}
+```
+
+## Flash Loan Pattern
+
+```move
+module example::flash_loan {
+    use iota::balance::{Self, Balance};
+    use iota::coin::{Self, Coin};
+    use iota::iota::IOTA;
+    use iota::object::{Self, UID};
+
+    public struct Pool has key {
+        id: UID,
+        balance: Balance<IOTA>,
+    }
+
+    /// Hot potato that enforces loan repayment
+    public struct Receipt {
+        amount: u64,
+        fee: u64,
+    }
+
+    const EInsufficientRepayment: u64 = 0;
+
+    /// Borrow from pool (returns hot potato)
+    public fun borrow(
+        pool: &mut Pool,
+        amount: u64,
+        ctx: &mut TxContext
+    ): (Coin<IOTA>, Receipt) {
+        let loan = pool.balance.split(amount).into_coin(ctx);
+        let fee = amount / 100;  // 1% fee
+        
+        let receipt = Receipt {
+            amount,
+            fee,
+        };
+        
+        (loan, receipt)
+    }
+
+    /// Repay loan (consumes hot potato)
+    public fun repay(
+        pool: &mut Pool,
+        payment: Coin<IOTA>,
+        receipt: Receipt,
+    ) {
+        let Receipt { amount, fee } = receipt;
+        let required = amount + fee;
+        
+        assert!(payment.value() >= required, EInsufficientRepayment);
+        
+        pool.balance.join(payment.into_balance());
+    }
+
+    /// Example: Arbitrage using flash loan
+    public fun arbitrage(
+        pool: &mut Pool,
+        ctx: &mut TxContext
+    ) {
+        // Borrow
+        let (loan, receipt) = borrow(pool, 1000, ctx);
+        
+        // Do arbitrage (simplified)
+        let mut profit_coin = loan;
+        // ... arbitrage logic ...
+        
+        // Must repay before function ends
+        repay(pool, profit_coin, receipt);
+    }
+}
+```
+
+## Atomic Swap Pattern
+
+```move
+module example::atomic_swap {
+    use iota::object::{Self, UID, ID};
+    use iota::coin::Coin;
+
+    public struct Swap<phantom T, phantom U> has key {
+        id: UID,
+        offered: Coin<T>,
+        expected_amount: u64,
+    }
+
+    /// Hot potato to ensure swap completion
+    public struct SwapTicket<phantom T, phantom U> {
+        swap_id: ID,
+        offered: Coin<T>,
+    }
+
+    /// Create swap offer
+    public fun create_swap<T, U>(
+        offered: Coin<T>,
+        expected_amount: u64,
+        ctx: &mut TxContext
+    ): Swap<T, U> {
+        Swap {
+            id: object::new(ctx),
+            offered,
+            expected_amount,
+        }
+    }
+
+    /// Accept swap (returns hot potato)
+    public fun accept_swap<T, U>(
+        swap: Swap<T, U>,
+        payment: Coin<U>,
+    ): SwapTicket<T, U> {
+        let Swap { id, offered, expected_amount } = swap;
+        assert!(payment.value() >= expected_amount, 0);
+        
+        // Payment is accepted
+        transfer::public_transfer(payment, @counterparty);
+        
+        let swap_id = id.to_inner();
+        id.delete();
+        
+        // Return hot potato with the offered coins
+        SwapTicket {
+            swap_id,
+            offered,
+        }
+    }
+
+    /// Complete swap (consume hot potato)
+    public fun complete_swap<T, U>(
+        ticket: SwapTicket<T, U>,
+        recipient: address,
+    ) {
+        let SwapTicket { swap_id: _, offered } = ticket;
+        transfer::public_transfer(offered, recipient);
+    }
+}
+```
+
+## Verification Pattern
+
+```move
+module example::verification {
+    use iota::object::{Self, UID};
+
+    public struct Data has key {
+        id: UID,
+        value: vector<u8>,
+        verified: bool,
+    }
+
+    /// Hot potato for verification
+    public struct VerificationProof {
+        data_hash: vector<u8>,
+    }
+
+    /// Submit data for verification (returns hot potato)
+    public fun submit_for_verification(
+        data: &Data,
+    ): VerificationProof {
+        // Create hash
+        let hash = hash::sha2_256(data.value);
+        
+        VerificationProof {
+            data_hash: hash,
+        }
+    }
+
+    /// Verify data (consumes hot potato)
+    public fun verify(
+        data: &mut Data,
+        proof: VerificationProof,
+        signature: vector<u8>,
+    ) {
+        let VerificationProof { data_hash } = proof;
+        
+        // Verify signature
+        // ...
+        
+        data.verified = true;
+    }
+}
+```
+
+## Two-Phase Commit Pattern
+
+```move
+module example::two_phase {
+    use iota::object::{Self, UID, ID};
+
+    public struct Resource has key {
+        id: UID,
+        value: u64,
+    }
+
+    /// Phase 1: Prepare (hot potato)
+    public struct PrepareReceipt {
+        resource_id: ID,
+        old_value: u64,
+        new_value: u64,
+    }
+
+    /// Phase 1: Prepare changes
+    public fun prepare(
+        resource: &mut Resource,
+        new_value: u64,
+    ): PrepareReceipt {
+        PrepareReceipt {
+            resource_id: object::id(resource),
+            old_value: resource.value,
+            new_value,
+        }
+    }
+
+    /// Phase 2a: Commit (consume hot potato)
+    public fun commit(
+        resource: &mut Resource,
+        receipt: PrepareReceipt,
+    ) {
+        let PrepareReceipt { resource_id, old_value: _, new_value } = receipt;
+        assert!(object::id(resource) == resource_id, 0);
+        resource.value = new_value;
+    }
+
+    /// Phase 2b: Rollback (consume hot potato)
+    public fun rollback(
+        _resource: &Resource,
+        receipt: PrepareReceipt,
+    ) {
+        let PrepareReceipt { resource_id: _, old_value: _, new_value: _ } = receipt;
+        // Nothing to do, just consume the receipt
+    }
+}
+```
+
+## Best Practices
+
+1. **No abilities**: Hot potatoes should have no abilities at all
+```move
+public struct HotPotato {  // No abilities!
+    data: u64,
+}
+```
+
+2. **Clear consumption path**: Provide obvious functions to consume the potato
+```move
+public fun consume(potato: HotPotato) { ... }
+```
+
+3. **Document requirement**: Clearly document that the type must be consumed
+```move
+/// Returns HotPotato that MUST be consumed by calling `complete()`
+public fun start(): HotPotato { ... }
+```
+
+4. **Validate on consumption**: Check invariants when consuming the potato
+```move
+public fun complete(potato: HotPotato, resource: &Resource) {
+    assert!(potato.resource_id == object::id(resource), 0);
+    // ...
+}
+```
+
+5. **Use for critical flows**: Only use hot potato for flows that must complete
+
+6. **Consider alternatives**: Sometimes a regular type with validations is simpler
+
+## Common Use Cases
+
+1. **Borrow/Return**: Ensure borrowed values are returned
+2. **Transfer Policies**: Enforce creator royalties and rules
+3. **Flash Loans**: Guarantee loan repayment
+4. **Atomic Swaps**: Ensure both sides of swap complete
+5. **Receipts**: Force receipt fulfillment
+6. **Workflows**: Enforce multi-step processes
+7. **Verification**: Require verification completion
+
+## Advantages
+
+- **Type-safe**: Compiler enforces proper handling
+- **No runtime overhead**: Checks happen at compile time
+- **Clear semantics**: Intent is obvious from the type
+- **Cannot be bypassed**: No way to ignore the requirement
+
+## Limitations
+
+- **Must complete in same transaction**: Cannot span multiple transactions
+- **No storage**: Cannot be stored for later use
+- **All-or-nothing**: Cannot partially handle the potato
+- **Complexity**: Adds complexity to the API

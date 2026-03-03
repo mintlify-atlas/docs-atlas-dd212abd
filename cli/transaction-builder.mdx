@@ -1,0 +1,652 @@
+---
+title: "Transaction Builder (PTB)"
+description: "Guide to building complex programmable transaction blocks with the IOTA CLI"
+---
+
+Programmable Transaction Blocks (PTBs) allow you to compose multiple operations into a single atomic transaction.
+
+## Overview
+
+PTBs enable:
+- **Composability**: Chain multiple Move calls in one transaction
+- **Efficiency**: Batch operations to save gas
+- **Atomicity**: All operations succeed or fail together
+- **Flexibility**: Build complex transaction logic
+
+## Basic Usage
+
+```bash
+iota client ptb [COMMANDS]
+```
+
+### Simple Transfer Example
+
+```bash
+iota client ptb \
+  --split-coins gas "[1000]" \
+  --assign new_coin \
+  --transfer-objects "[new_coin]" @0xRECIPIENT
+```
+
+This PTB:
+1. Splits 1000 nanos from gas coin
+2. Assigns result to variable `new_coin`
+3. Transfers `new_coin` to recipient
+
+## PTB Commands
+
+### transfer-objects
+
+Transfer objects to a recipient:
+
+```bash
+iota client ptb \
+  --transfer-objects "[<OBJECT_IDS>]" <RECIPIENT>
+```
+
+#### Example
+
+```bash
+# Transfer single object
+iota client ptb \
+  --transfer-objects "[0xabc123]" @0xRECIPIENT
+
+# Transfer multiple objects
+iota client ptb \
+  --transfer-objects "[0xabc123, 0xdef456]" @0xRECIPIENT
+```
+
+### split-coins
+
+Split coins into new coins:
+
+```bash
+iota client ptb \
+  --split-coins <COIN> "[<AMOUNTS>]"
+```
+
+#### Examples
+
+```bash
+# Split gas coin
+iota client ptb \
+  --split-coins gas "[1000, 2000, 3000]"
+
+# Split specific coin
+iota client ptb \
+  --split-coins 0xCOIN_ID "[5000, 10000]"
+```
+
+### merge-coins
+
+Merge coins into a single coin:
+
+```bash
+iota client ptb \
+  --merge-coins <TARGET_COIN> "[<COINS_TO_MERGE>]"
+```
+
+#### Example
+
+```bash
+iota client ptb \
+  --merge-coins 0xCOIN1 "[0xCOIN2, 0xCOIN3]"
+```
+
+### move-call
+
+Call a Move function:
+
+```bash
+iota client ptb \
+  --move-call <PACKAGE>::<MODULE>::<FUNCTION> "[<ARGS>]" "[<TYPE_ARGS>]"
+```
+
+#### Examples
+
+```bash
+# Simple call
+iota client ptb \
+  --move-call 0x2::coin::mint "[0xTREASURY, 1000000]" "[0x2::iota::IOTA]"
+
+# Call with object argument
+iota client ptb \
+  --move-call 0xPKG::my_module::process "[0xOBJ]" "[]"
+```
+
+### make-move-vec
+
+Create a Move vector:
+
+```bash
+iota client ptb \
+  --make-move-vec "[<ELEMENTS>]" "<TYPE>"
+```
+
+#### Example
+
+```bash
+iota client ptb \
+  --make-move-vec "[0xOBJ1, 0xOBJ2, 0xOBJ3]" "0x2::coin::Coin<0x2::iota::IOTA>"
+```
+
+### publish
+
+Publish a Move package:
+
+```bash
+iota client ptb \
+  --publish <PACKAGE_PATH>
+```
+
+#### Example
+
+```bash
+iota client ptb \
+  --publish ./my_package
+```
+
+### upgrade
+
+Upgrade a Move package:
+
+```bash
+iota client ptb \
+  --upgrade <PACKAGE_PATH> <UPGRADE_CAP>
+```
+
+#### Example
+
+```bash
+iota client ptb \
+  --upgrade ./my_package 0xUPGRADE_CAP
+```
+
+### assign
+
+Assign result to a variable:
+
+```bash
+iota client ptb \
+  --split-coins gas "[1000]" \
+  --assign coin1
+```
+
+Variables can be referenced in subsequent commands:
+
+```bash
+iota client ptb \
+  --split-coins gas "[1000]" \
+  --assign coin1 \
+  --transfer-objects "[coin1]" @0xRECIPIENT
+```
+
+### gas-budget
+
+Set gas budget:
+
+```bash
+iota client ptb \
+  --gas-budget 10000000 \
+  [COMMANDS]
+```
+
+## Complex Examples
+
+### Multi-Step Transfer
+
+Split coins and transfer to multiple recipients:
+
+```bash
+iota client ptb \
+  --split-coins gas "[1000, 2000, 3000]" \
+  --assign coins \
+  --transfer-objects "[coins.0]" @0xALICE \
+  --transfer-objects "[coins.1]" @0xBOB \
+  --transfer-objects "[coins.2]" @0xCHARLIE
+```
+
+### Swap Operations
+
+Chain multiple Move calls:
+
+```bash
+iota client ptb \
+  --move-call 0xDEX::pool::swap_a_to_b "[0xPOOL, 0xCOIN_A, 1000]" "[0x2::iota::IOTA, 0xTOKEN::TOKEN]" \
+  --assign coin_b \
+  --transfer-objects "[coin_b]" @0xRECIPIENT \
+  --gas-budget 20000000
+```
+
+### Batch Minting
+
+Mint and distribute NFTs:
+
+```bash
+iota client ptb \
+  --move-call 0xNFT::collection::mint "[0xCOLLECTION, 'Name1', 'URI1']" "[]" \
+  --assign nft1 \
+  --move-call 0xNFT::collection::mint "[0xCOLLECTION, 'Name2', 'URI2']" "[]" \
+  --assign nft2 \
+  --transfer-objects "[nft1]" @0xUSER1 \
+  --transfer-objects "[nft2]" @0xUSER2 \
+  --gas-budget 30000000
+```
+
+### Publish and Initialize
+
+Publish package and initialize in one transaction:
+
+```bash
+iota client ptb \
+  --publish ./my_package \
+  --assign package upgrade_cap \
+  --move-call package::my_module::initialize "[upgrade_cap]" "[]" \
+  --gas-budget 100000000
+```
+
+### Coin Operations
+
+Complex coin manipulation:
+
+```bash
+iota client ptb \
+  --split-coins gas "[10000]" \
+  --assign payment \
+  --split-coins 0xCOIN "[5000]" \
+  --assign change \
+  --merge-coins payment "[change]" \
+  --move-call 0xPKG::shop::purchase "[0xSHOP, payment]" "[]" \
+  --assign item \
+  --transfer-objects "[item]" @0xBUYER \
+  --gas-budget 15000000
+```
+
+## Variables and References
+
+### Result Variables
+
+Commands return results that can be assigned:
+
+```bash
+iota client ptb \
+  --split-coins gas "[1000]" \
+  --assign coin  # Single result
+```
+
+### Multiple Results
+
+Some commands return multiple values:
+
+```bash
+iota client ptb \
+  --split-coins gas "[1000, 2000]" \
+  --assign coins  # Array of results
+```
+
+Reference individual results:
+
+```bash
+iota client ptb \
+  --split-coins gas "[1000, 2000]" \
+  --assign coins \
+  --transfer-objects "[coins.0]" @0xALICE  # First coin
+  --transfer-objects "[coins.1]" @0xBOB    # Second coin
+```
+
+### Special Variables
+
+- `gas` - The gas payment coin
+- `@0xADDRESS` - Address literals
+- `0xOBJECT_ID` - Object references
+
+## Gas Management
+
+### Gas Budget
+
+Set maximum gas to spend:
+
+```bash
+iota client ptb \
+  --gas-budget 20000000 \
+  [COMMANDS]
+```
+
+### Gas Payment
+
+Use specific coins for gas:
+
+```bash
+iota client ptb \
+  --gas 0xCOIN1 0xCOIN2 \
+  [COMMANDS]
+```
+
+### Gas Coin Operations
+
+The gas coin can be split and used:
+
+```bash
+iota client ptb \
+  --split-coins gas "[1000]" \
+  --assign payment \
+  --move-call 0xPKG::module::function "[payment]" "[]"
+```
+
+## Type Arguments
+
+### Generic Functions
+
+Specify type arguments for generic functions:
+
+```bash
+iota client ptb \
+  --move-call 0x2::coin::transfer "[0xCOIN, 0xRECIPIENT]" "[0x2::iota::IOTA]"
+```
+
+### Multiple Type Arguments
+
+```bash
+iota client ptb \
+  --move-call 0xDEX::pool::swap "[0xPOOL, 0xCOIN_A]" "[0x2::iota::IOTA, 0xTOKEN::TOKEN]"
+```
+
+## Transaction Options
+
+### Dry Run
+
+Simulate without executing:
+
+```bash
+iota client ptb \
+  [COMMANDS] \
+  --dry-run
+```
+
+### Serialize
+
+Get transaction bytes:
+
+```bash
+iota client ptb \
+  [COMMANDS] \
+  --serialize-unsigned-transaction
+```
+
+### Custom Sender
+
+Override sender address:
+
+```bash
+iota client ptb \
+  [COMMANDS] \
+  --sender @0xSENDER
+```
+
+### JSON Output
+
+Get JSON formatted output:
+
+```bash
+iota client ptb \
+  [COMMANDS] \
+  --json
+```
+
+## Advanced Patterns
+
+### Conditional Operations
+
+Use Move functions for conditional logic:
+
+```bash
+iota client ptb \
+  --move-call 0xPKG::module::check_condition "[0xOBJ]" "[]" \
+  --assign should_proceed \
+  --move-call 0xPKG::module::conditional_action "[should_proceed, 0xOBJ]" "[]"
+```
+
+### Loops (via Move)
+
+Batch operations using Move vectors:
+
+```bash
+iota client ptb \
+  --make-move-vec "[0xOBJ1, 0xOBJ2, 0xOBJ3]" "0x2::object::ID" \
+  --assign objects \
+  --move-call 0xPKG::module::process_batch "[objects]" "[]"
+```
+
+### Object Creation and Transfer
+
+```bash
+iota client ptb \
+  --move-call 0xPKG::nft::mint "['Name', 'Description', 'URI']" "[]" \
+  --assign nft \
+  --move-call 0xPKG::marketplace::list "[0xMARKET, nft, 1000000]" "[]" \
+  --gas-budget 20000000
+```
+
+### Package Management
+
+```bash
+iota client ptb \
+  --publish ./my_package \
+  --assign package upgrade_cap \
+  --transfer-objects "[upgrade_cap]" @0xADMIN \
+  --gas-budget 100000000
+```
+
+## Best Practices
+
+### 1. Minimize Operations
+
+Batch operations efficiently:
+
+```bash
+# Good: One PTB
+iota client ptb \
+  --split-coins gas "[1000, 2000, 3000]" \
+  --assign coins \
+  --transfer-objects "[coins.0, coins.1, coins.2]" @0xRECIPIENT
+
+# Bad: Multiple transactions
+iota client transfer --to @0xRECIPIENT --object-id 0xCOIN1
+iota client transfer --to @0xRECIPIENT --object-id 0xCOIN2
+iota client transfer --to @0xRECIPIENT --object-id 0xCOIN3
+```
+
+### 2. Handle Errors
+
+Use dry run to test:
+
+```bash
+iota client ptb \
+  [COMMANDS] \
+  --dry-run
+```
+
+### 3. Optimize Gas
+
+Estimate gas before execution:
+
+```bash
+# Dry run to see gas usage
+iota client ptb [COMMANDS] --dry-run
+
+# Set appropriate budget
+iota client ptb [COMMANDS] --gas-budget <ESTIMATED_GAS + BUFFER>
+```
+
+### 4. Use Variables
+
+Make PTBs readable with variables:
+
+```bash
+iota client ptb \
+  --split-coins gas "[1000]" \
+  --assign payment \
+  --move-call 0xPKG::shop::buy "[payment]" "[]" \
+  --assign item \
+  --transfer-objects "[item]" @0xBUYER
+```
+
+### 5. Atomic Operations
+
+Group related operations:
+
+```bash
+# Atomic: Buy and transfer
+iota client ptb \
+  --move-call 0xDEX::pool::swap "[...]" "[]" \
+  --assign token \
+  --transfer-objects "[token]" @0xRECIPIENT
+```
+
+## Troubleshooting
+
+### Error: Invalid argument
+
+**Issue**: Incorrect argument format
+
+Solution:
+```bash
+# Use quotes for arrays
+iota client ptb --split-coins gas "[1000]"
+
+# Not: --split-coins gas [1000]
+```
+
+### Error: Variable not found
+
+**Issue**: Referencing undefined variable
+
+Solution:
+```bash
+# Assign before using
+iota client ptb \
+  --split-coins gas "[1000]" \
+  --assign coin \
+  --transfer-objects "[coin]" @0xADDRESS
+```
+
+### Error: Type mismatch
+
+**Issue**: Wrong type arguments
+
+Solution:
+```bash
+# Specify correct type
+iota client ptb \
+  --move-call 0x2::coin::transfer "[...]" "[0x2::iota::IOTA]"
+```
+
+### Error: Insufficient gas
+
+**Issue**: Gas budget too low
+
+Solution:
+```bash
+# Increase budget
+iota client ptb [COMMANDS] --gas-budget 20000000
+
+# Or dry run first to estimate
+iota client ptb [COMMANDS] --dry-run
+```
+
+### Error: Object not owned
+
+**Issue**: Trying to use object you don't own
+
+Solution:
+```bash
+# Verify ownership
+iota client object 0xOBJECT_ID
+
+# Use correct sender
+iota client ptb [COMMANDS] --sender @0xOWNER
+```
+
+## Examples Library
+
+### Simple Transfer
+
+```bash
+iota client ptb \
+  --transfer-objects "[0xOBJ]" @0xRECIPIENT
+```
+
+### Split and Transfer
+
+```bash
+iota client ptb \
+  --split-coins gas "[1000]" \
+  --assign coin \
+  --transfer-objects "[coin]" @0xRECIPIENT
+```
+
+### Multi-Recipient Transfer
+
+```bash
+iota client ptb \
+  --split-coins gas "[1000, 2000, 3000]" \
+  --assign coins \
+  --transfer-objects "[coins.0]" @0xALICE \
+  --transfer-objects "[coins.1]" @0xBOB \
+  --transfer-objects "[coins.2]" @0xCHARLIE
+```
+
+### Merge and Use
+
+```bash
+iota client ptb \
+  --merge-coins 0xCOIN1 "[0xCOIN2, 0xCOIN3]" \
+  --assign merged \
+  --move-call 0xPKG::module::use_coin "[merged]" "[]"
+```
+
+### Publish and Initialize
+
+```bash
+iota client ptb \
+  --publish ./package \
+  --assign package upgrade_cap \
+  --move-call package::module::init "[upgrade_cap]" "[]" \
+  --gas-budget 100000000
+```
+
+### NFT Mint and List
+
+```bash
+iota client ptb \
+  --move-call 0xNFT::collection::mint "[0xCOL, 'Name', 'URI']" "[]" \
+  --assign nft \
+  --move-call 0xMKT::market::list "[0xMARKET, nft, 1000000]" "[]" \
+  --gas-budget 20000000
+```
+
+### DeFi Swap
+
+```bash
+iota client ptb \
+  --split-coins 0xCOIN_A "[1000000]" \
+  --assign amount \
+  --move-call 0xDEX::pool::swap_a_to_b "[0xPOOL, amount]" "[0x2::iota::IOTA, 0xTOKEN::TOKEN]" \
+  --assign coin_b \
+  --transfer-objects "[coin_b]" @0xRECIPIENT \
+  --gas-budget 25000000
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Client Commands" icon="terminal" href="/cli/client-commands">
+    Learn more client operations
+  </Card>
+  <Card title="Move Commands" icon="code" href="/cli/move-commands">
+    Build Move packages
+  </Card>
+  <Card title="Testing" icon="flask" href="/cli/testing">
+    Test your transactions
+  </Card>
+</CardGroup>

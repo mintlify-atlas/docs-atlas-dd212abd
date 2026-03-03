@@ -1,0 +1,323 @@
+---
+title: Create and deploy your first Move package
+description: Learn how to create, build, test, and deploy your first Move smart contract package on IOTA.
+---
+
+This guide walks you through creating, building, testing, and deploying your first Move package on IOTA.
+
+## What you'll build
+
+You'll create a simple smart contract that manages magical swords - demonstrating core Move concepts like:
+
+- Defining structs with abilities
+- Working with objects and UIDs
+- Implementing module initializers
+- Creating and transferring objects
+- Writing unit tests
+
+## Create a new Move package
+
+<Steps>
+  <Step title="Create package directory">
+    Create a new directory for your Move package:
+
+    ```bash
+    mkdir my_first_package
+    cd my_first_package
+    ```
+  </Step>
+
+  <Step title="Initialize the package">
+    Create a `Move.toml` manifest file:
+
+    ```toml Move.toml
+    [package]
+    name = "my_first_package"
+    edition = "2024"
+
+    [dependencies]
+    Iota = { git = "https://github.com/iotaledger/iota.git", subdir = "crates/iota-framework/packages/iota-framework", rev = "main" }
+
+    [addresses]
+    my_first_package = "0x0"
+    ```
+
+    <Note>
+      For local development, you can use a local path:
+      ```toml
+      Iota = { local = "../path/to/iota/crates/iota-framework/packages/iota-framework" }
+      ```
+    </Note>
+  </Step>
+
+  <Step title="Create sources directory">
+    ```bash
+    mkdir sources
+    ```
+  </Step>
+</Steps>
+
+## Write your first Move module
+
+Create a file `sources/sword.move`:
+
+```move sources/sword.move
+// Copyright (c) 2024 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
+module my_first_package::sword {
+    use iota::object::{Self, UID};
+    use iota::transfer;
+    use iota::tx_context::{Self, TxContext};
+
+    /// Sword struct represents a magical sword object
+    /// - 'key' ability allows it to be stored as a top-level object
+    /// - 'store' ability allows it to be stored inside other structs
+    public struct Sword has key, store {
+        id: UID,
+        magic: u64,
+        strength: u64,
+    }
+
+    /// Forge tracks how many swords have been created
+    public struct Forge has key {
+        id: UID,
+        swords_created: u64,
+    }
+
+    /// Module initializer executed when this module is published
+    fun init(ctx: &mut TxContext) {
+        let forge = Forge {
+            id: object::new(ctx),
+            swords_created: 0,
+        };
+        // Transfer the forge to the module publisher
+        transfer::transfer(forge, tx_context::sender(ctx));
+    }
+
+    /// Accessor: get sword's magic power
+    public fun magic(self: &Sword): u64 {
+        self.magic
+    }
+
+    /// Accessor: get sword's strength
+    public fun strength(self: &Sword): u64 {
+        self.strength
+    }
+
+    /// Create a new sword using the forge
+    public fun new_sword(
+        forge: &mut Forge,
+        magic: u64,
+        strength: u64,
+        ctx: &mut TxContext
+    ): Sword {
+        forge.swords_created = forge.swords_created + 1;
+        Sword {
+            id: object::new(ctx),
+            magic,
+            strength,
+        }
+    }
+
+    /// Transfer a sword to a recipient
+    public fun transfer_sword(
+        sword: Sword,
+        recipient: address,
+        _ctx: &mut TxContext
+    ) {
+        transfer::public_transfer(sword, recipient);
+    }
+}
+```
+
+## Build your package
+
+<Steps>
+  <Step title="Build the package">
+    Compile your Move code:
+
+    ```bash
+    iota move build
+    ```
+
+    If successful, you'll see:
+    ```
+    BUILDING my_first_package
+    ```
+
+    The compiled bytecode is saved in the `build/` directory.
+  </Step>
+
+  <Step title="Check for errors">
+    If there are compilation errors, the compiler will show detailed error messages with line numbers.
+
+    Common issues:
+    - Missing semicolons
+    - Incorrect ability annotations
+    - Type mismatches
+    - Unimported modules
+  </Step>
+</Steps>
+
+## Test your package
+
+Add tests to verify your code works correctly. Create tests in the same file:
+
+```move sources/sword.move
+#[test_only]
+module my_first_package::sword_tests {
+    use my_first_package::sword::{Self, Sword, Forge};
+    use iota::test_scenario as ts;
+
+    const ADMIN: address = @0xAD;
+    const ALICE: address = @0xA;
+
+    #[test]
+    fun test_sword_creation() {
+        let mut ts = ts::begin(ADMIN);
+
+        // Initialize module
+        {
+            sword::init(ts.ctx());
+        };
+
+        // Create a sword
+        ts.next_tx(ADMIN);
+        {
+            let mut forge = ts.take_from_sender<Forge>();
+            let sword = sword::new_sword(&mut forge, 42, 7, ts.ctx());
+
+            assert!(sword.magic() == 42, 0);
+            assert!(sword.strength() == 7, 1);
+
+            transfer::public_transfer(sword, ALICE);
+            ts::return_to_sender(&ts, forge);
+        };
+
+        // Verify Alice received the sword
+        ts.next_tx(ALICE);
+        {
+            let sword = ts.take_from_sender<Sword>();
+            assert!(sword.magic() == 42, 2);
+            ts::return_to_sender(&ts, sword);
+        };
+
+        ts.end();
+    }
+}
+```
+
+Run the tests:
+
+```bash
+iota move test
+```
+
+You should see:
+```
+RUNNING Move unit tests
+[ PASS    ] 0x0::sword_tests::test_sword_creation
+Test result: OK. Total tests: 1; passed: 1; failed: 0
+```
+
+## Deploy your package
+
+<Steps>
+  <Step title="Ensure you have gas">
+    Check your balance:
+
+    ```bash
+    iota client gas
+    ```
+
+    If needed, request tokens:
+
+    ```bash
+    iota client faucet
+    ```
+  </Step>
+
+  <Step title="Publish the package">
+    Deploy your package to the IOTA blockchain:
+
+    ```bash
+    iota client publish --gas-budget 100000000
+    ```
+
+    The output includes:
+    - Package ID: Your published package's unique identifier
+    - Transaction digest: The transaction hash
+    - Gas cost: Amount of gas consumed
+    - Created objects: Objects created during deployment
+  </Step>
+
+  <Step title="Save the Package ID">
+    Copy and save the Package ID from the output:
+
+    ```
+    ╭─────────────────────────────────────────────────────────╮
+    │ Package ID: 0x1234...5678                               │
+    ╰─────────────────────────────────────────────────────────╯
+    ```
+
+    You'll need this to interact with your package.
+  </Step>
+</Steps>
+
+## Interact with your deployed package
+
+Now you can call functions from your published package:
+
+```bash
+# Call the new_sword function
+iota client call \
+  --package 0x<PACKAGE_ID> \
+  --module sword \
+  --function new_sword \
+  --args 0x<FORGE_OBJECT_ID> 100 50 \
+  --gas-budget 10000000
+```
+
+## Understanding the deployment
+
+When you publish a package:
+
+1. **Module initializer runs**: The `init` function executes automatically
+2. **Objects are created**: The `Forge` object is created and transferred to you
+3. **Package is immutable**: Once published, the code cannot be changed
+4. **Address is assigned**: Your package gets a permanent on-chain address
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Testing and debugging" icon="flask" href="/building/testing-debugging">
+    Learn advanced testing techniques and debugging strategies
+  </Card>
+  <Card title="IOTA Move framework" icon="book" href="/building/move-framework">
+    Explore the built-in IOTA framework modules
+  </Card>
+</CardGroup>
+
+## Common issues
+
+### Build fails with "Unable to resolve packages"
+
+Check your `Move.toml` dependencies. Ensure:
+- Git URLs are correct
+- Local paths exist
+- Network connection is available
+
+### "Insufficient gas" error
+
+Increase the gas budget:
+```bash
+iota client publish --gas-budget 200000000
+```
+
+### Module init function errors
+
+The `init` function must:
+- Be named exactly `init`
+- Have `fun` visibility (not `public fun`)
+- Take `&mut TxContext` or `&TxContext` as the last parameter

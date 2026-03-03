@@ -1,0 +1,325 @@
+---
+title: API Reference Overview
+description: Complete API reference for the IOTA TypeScript SDK
+---
+
+The IOTA TypeScript SDK provides a comprehensive set of modules and APIs for interacting with the IOTA blockchain. This page serves as an overview of the available APIs.
+
+## Package Information
+
+- **Package Name**: `@iota/iota-sdk`
+- **Current Version**: 1.11.0
+- **License**: Apache-2.0
+- **Repository**: [github.com/iotaledger/iota](https://github.com/iotaledger/iota)
+- **Documentation**: [docs.iota.org/developer/ts-sdk/typescript](https://docs.iota.org/developer/ts-sdk/typescript/)
+
+## Module Exports
+
+The SDK is organized into modular exports for different functionality:
+
+### Client Module
+
+```typescript
+import { IotaClient, getFullnodeUrl } from '@iota/iota-sdk/client';
+```
+
+**Key Classes:**
+- `IotaClient` - Main client for interacting with the IOTA network
+- `IotaHTTPTransport` - HTTP transport layer
+
+**Key Functions:**
+- `getFullnodeUrl(network)` - Get default RPC URLs for networks
+
+**Networks:** `'localnet'`, `'devnet'`, `'testnet'`
+
+### Transactions Module
+
+```typescript
+import { Transaction } from '@iota/iota-sdk/transactions';
+```
+
+**Key Classes:**
+- `Transaction` - Transaction builder for creating and managing transactions
+- `TransactionDataBuilder` - Low-level transaction data builder
+
+**Transaction Methods:**
+- `transferObjects(objects, recipient)` - Transfer objects
+- `splitCoins(coin, amounts)` - Split coins
+- `mergeCoins(destination, sources)` - Merge coins
+- `moveCall(params)` - Call Move functions
+- `publish(params)` - Publish Move packages
+- `makeMoveVec(params)` - Create Move vectors
+
+### Keypair Modules
+
+#### Ed25519
+
+```typescript
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+```
+
+**Key Classes:**
+- `Ed25519Keypair` - Ed25519 signature scheme keypair
+- `Ed25519PublicKey` - Ed25519 public key
+
+**Static Methods:**
+- `Ed25519Keypair.generate()` - Generate random keypair
+- `Ed25519Keypair.fromSecretKey(key)` - Create from secret key
+- `Ed25519Keypair.deriveKeypair(mnemonic, path)` - Derive from mnemonic
+
+**Default Derivation Path:** `m/44'/4218'/0'/0'/0'`
+
+#### Secp256k1
+
+```typescript
+import { Secp256k1Keypair } from '@iota/iota-sdk/keypairs/secp256k1';
+```
+
+**Key Classes:**
+- `Secp256k1Keypair` - Secp256k1 signature scheme keypair
+- `Secp256k1PublicKey` - Secp256k1 public key
+
+**Default Derivation Path:** `m/54'/4218'/0'/0/0`
+
+#### Secp256r1
+
+```typescript
+import { Secp256r1Keypair } from '@iota/iota-sdk/keypairs/secp256r1';
+```
+
+**Key Classes:**
+- `Secp256r1Keypair` - Secp256r1 signature scheme keypair
+- `Secp256r1PublicKey` - Secp256r1 public key
+
+**Default Derivation Path:** `m/74'/4218'/0'/0/0`
+
+### Multisig Module
+
+```typescript
+import { MultiSigPublicKey, MultiSigSigner } from '@iota/iota-sdk/multisig';
+```
+
+**Key Classes:**
+- `MultiSigPublicKey` - Multi-signature public key
+- `MultiSigSigner` - Signer for multisig transactions
+
+**Constants:**
+- `MAX_SIGNER_IN_MULTISIG` - Maximum signers (10)
+- `MIN_SIGNER_IN_MULTISIG` - Minimum signers (1)
+
+### Faucet Module
+
+```typescript
+import { requestIotaFromFaucetV0, getFaucetHost } from '@iota/iota-sdk/faucet';
+```
+
+**Key Functions:**
+- `requestIotaFromFaucetV0(params)` - Request tokens from faucet
+- `getFaucetHost(network)` - Get faucet URL for network
+
+### GraphQL Module
+
+```typescript
+import { IotaGraphQLClient } from '@iota/iota-sdk/graphql';
+import { graphql } from '@iota/iota-sdk/graphql/schemas/2025.2';
+```
+
+**Key Classes:**
+- `IotaGraphQLClient` - GraphQL client for advanced queries
+- `IotaGraphQLRequestError` - GraphQL request error
+
+### BCS Module
+
+```typescript
+import { bcs } from '@iota/iota-sdk/bcs';
+```
+
+Binary Canonical Serialization for IOTA data structures.
+
+### Cryptography Module
+
+```typescript
+import { 
+  generateMnemonic,
+  isValidMnemonics,
+  Signer,
+  PublicKey,
+} from '@iota/iota-sdk/cryptography';
+```
+
+**Key Functions:**
+- `generateMnemonic(wordCount?)` - Generate BIP39 mnemonic
+- `isValidMnemonics(mnemonic)` - Validate mnemonic phrase
+- `mnemonicToSeed(mnemonic)` - Convert mnemonic to seed
+
+**Key Classes:**
+- `Signer` - Base signer interface
+- `PublicKey` - Base public key class
+- `Keypair` - Base keypair class
+
+### Utils Module
+
+```typescript
+import {
+  isValidIotaAddress,
+  isValidIotaObjectId,
+  normalizeIotaAddress,
+  normalizeIotaObjectId,
+} from '@iota/iota-sdk/utils';
+```
+
+**Key Functions:**
+- `isValidIotaAddress(address)` - Validate IOTA address
+- `isValidIotaObjectId(objectId)` - Validate object ID
+- `normalizeIotaAddress(address)` - Normalize address to 0x-prefixed hex
+- `normalizeIotaObjectId(objectId)` - Normalize object ID
+- `formatBalance(balance, decimals)` - Format balance for display
+
+### Verify Module
+
+```typescript
+import { 
+  verifyTransactionSignature,
+  publicKeyFromRawBytes,
+} from '@iota/iota-sdk/verify';
+```
+
+**Key Functions:**
+- `verifyTransactionSignature(bytes, signature)` - Verify transaction signature
+- `publicKeyFromRawBytes(scheme, bytes)` - Create public key from bytes
+
+## IotaClient API Methods
+
+### Query Methods
+
+#### Objects
+- `getObject(params)` - Get single object
+- `multiGetObjects(params)` - Get multiple objects
+- `getOwnedObjects(params)` - Get objects owned by address
+- `getDynamicFields(params)` - Get dynamic fields
+- `getDynamicFieldObject(params)` - Get dynamic field object
+
+#### Coins
+- `getCoins(params)` - Get coins by type
+- `getAllCoins(params)` - Get all coins
+- `getBalance(params)` - Get coin balance
+- `getAllBalances(params)` - Get all balances
+- `getCoinMetadata(params)` - Get coin metadata
+- `getTotalSupply(params)` - Get total coin supply
+
+#### Transactions
+- `getTransaction(params)` - Get transaction by digest
+- `multiGetTransactions(params)` - Get multiple transactions
+- `queryTransactions(params)` - Query transactions with filters
+
+#### Events
+- `queryEvents(params)` - Query events
+- `subscribeEvent(params)` - Subscribe to events (WebSocket)
+- `subscribeTransaction(params)` - Subscribe to transactions
+
+#### Checkpoints
+- `getCheckpoint(params)` - Get checkpoint by ID
+- `getCheckpoints(params)` - Get checkpoints with pagination
+- `getLatestCheckpointSequenceNumber()` - Get latest checkpoint number
+
+#### Network
+- `getProtocolConfig(params?)` - Get protocol configuration
+- `getChainIdentifier()` - Get chain identifier
+- `getReferenceGasPrice()` - Get reference gas price
+
+#### Move
+- `getMoveFunctionArgTypes(params)` - Get function argument types
+- `getNormalizedMoveFunction(params)` - Get normalized function
+- `getNormalizedMoveModule(params)` - Get normalized module
+- `getNormalizedMoveModulesByPackage(params)` - Get all modules in package
+- `getNormalizedMoveStruct(params)` - Get normalized struct
+
+### Transaction Execution
+
+- `signAndExecuteTransaction(params)` - Sign and execute transaction
+- `executeTransaction(params)` - Execute pre-signed transaction
+- `dryRunTransactionBlock(params)` - Simulate transaction
+- `devInspectTransactionBlock(params)` - Inspect transaction effects
+
+### Custom RPC
+
+- `call(method, params)` - Make custom RPC call
+
+## Type Definitions
+
+The SDK includes comprehensive TypeScript type definitions for all APIs.
+
+### Common Types
+
+```typescript
+type IotaAddress = string;  // 0x-prefixed hex address
+type ObjectId = string;     // 0x-prefixed hex object ID
+type TransactionDigest = string;
+type IotaEvent = {
+  id: { txDigest: string; eventSeq: string };
+  packageId: string;
+  transactionModule: string;
+  sender: string;
+  type: string;
+  parsedJson?: Record<string, any>;
+  bcs?: string;
+};
+```
+
+## TypeDoc Documentation
+
+For detailed API documentation with all types and interfaces, visit:
+
+- **Latest Release**: [TypeScript SDK TypeDoc](http://typescript-sdk-docs.s3-website-us-east-1.amazonaws.com/)
+- **Main Branch**: Build locally with `pnpm doc` and open `doc/index.html`
+
+## JSON-RPC API Reference
+
+For the underlying JSON-RPC API reference:
+
+- [IOTA JSON-RPC API Documentation](https://docs.iota.org/iota-api-ref)
+
+## Examples
+
+For complete code examples demonstrating these APIs:
+
+<CardGroup cols={2}>
+  <Card title="Examples" icon="code" href="./examples">
+    See complete code examples
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="./quickstart">
+    Get started with basic usage
+  </Card>
+</CardGroup>
+
+## Version Compatibility
+
+<Warning>
+The SDK and RPC API are still iterating before TestNet. Breaking changes are expected. The API will stabilize after the TestNet launch.
+</Warning>
+
+**Release Cycle:**
+- SDK releases bi-weekly in sync with Devnet validators
+- Use `@iota/iota-sdk@experimental` for latest changes from main branch
+- Use `@iota/iota-sdk@latest` for stable releases
+
+## Support and Resources
+
+- **GitHub**: [github.com/iotaledger/iota](https://github.com/iotaledger/iota)
+- **Issues**: [GitHub Issues](https://github.com/iotaledger/iota/issues/new)
+- **Documentation**: [docs.iota.org](https://docs.iota.org)
+- **NPM**: [@iota/iota-sdk](https://www.npmjs.com/package/@iota/iota-sdk)
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Installation" icon="download" href="./installation">
+    Install the SDK
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="./quickstart">
+    Get started quickly
+  </Card>
+  <Card title="Examples" icon="code" href="./examples">
+    Complete examples
+  </Card>
+</CardGroup>

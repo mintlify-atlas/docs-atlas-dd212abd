@@ -1,0 +1,494 @@
+---
+title: Event Subscription and Querying
+description: Subscribe to and query blockchain events using the IOTA TypeScript SDK
+---
+
+The IOTA network emits events when transactions are executed. You can query historical events or subscribe to real-time event streams.
+
+## Querying Events
+
+### Query Events by Sender
+
+Query events created by transactions from a specific address:
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+
+const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+
+const events = await client.queryEvents({
+  query: { 
+    Sender: '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+  },
+  limit: 10,
+});
+
+console.log('Events:', events);
+```
+
+### Query Events by Transaction
+
+Query events from a specific transaction:
+
+```typescript
+const events = await client.queryEvents({
+  query: { 
+    Transaction: '9XFneskU8tW7UxQf7tE5qFRfcN4FadtC2Z3HAZkgeETd=',
+  },
+});
+
+console.log('Transaction events:', events);
+```
+
+### Query Events by Type
+
+Query events of a specific type:
+
+```typescript
+const events = await client.queryEvents({
+  query: { 
+    MoveEventType: '0x2::coin::CoinCreated<0x2::iota::IOTA>',
+  },
+  limit: 20,
+});
+
+console.log('Coin creation events:', events);
+```
+
+### Query Events by Module
+
+Query all events from a specific Move module:
+
+```typescript
+const events = await client.queryEvents({
+  query: { 
+    MoveEventModule: {
+      package: '0x2',
+      module: 'coin',
+    },
+  },
+  limit: 50,
+});
+
+console.log('Module events:', events);
+```
+
+## Event Query Filters
+
+Supported query filters:
+
+<Tabs>
+  <Tab title="Sender">
+    Query events by transaction sender:
+    
+    ```typescript
+    const events = await client.queryEvents({
+      query: { 
+        Sender: '0xaddress...',
+      },
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Transaction">
+    Query events from a specific transaction:
+    
+    ```typescript
+    const events = await client.queryEvents({
+      query: { 
+        Transaction: 'digest...',
+      },
+    });
+    ```
+  </Tab>
+  
+  <Tab title="MoveEventType">
+    Query events by Move event type:
+    
+    ```typescript
+    const events = await client.queryEvents({
+      query: { 
+        MoveEventType: '0x2::coin::CoinCreated<0x2::iota::IOTA>',
+      },
+    });
+    ```
+  </Tab>
+  
+  <Tab title="MoveEventModule">
+    Query events from a Move module:
+    
+    ```typescript
+    const events = await client.queryEvents({
+      query: { 
+        MoveEventModule: {
+          package: '0x2',
+          module: 'coin',
+        },
+      },
+    });
+    ```
+  </Tab>
+  
+  <Tab title="TimeRange">
+    Query events within a time range:
+    
+    ```typescript
+    const events = await client.queryEvents({
+      query: { 
+        TimeRange: {
+          startTime: 1234567890000,
+          endTime: 1234567900000,
+        },
+      },
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Pagination
+
+Handle large result sets with pagination:
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+
+const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+
+// First page
+const firstPage = await client.queryEvents({
+  query: { Sender: address },
+  limit: 50,
+});
+
+console.log('First page:', firstPage.data);
+
+// Next page using cursor
+if (firstPage.hasNextPage && firstPage.nextCursor) {
+  const nextPage = await client.queryEvents({
+    query: { Sender: address },
+    cursor: firstPage.nextCursor,
+    limit: 50,
+  });
+  
+  console.log('Next page:', nextPage.data);
+}
+```
+
+### Fetch All Events
+
+Fetch all events matching a query:
+
+```typescript
+async function getAllEvents(query: any) {
+  const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+  const allEvents = [];
+  let hasMore = true;
+  let cursor = null;
+  
+  while (hasMore) {
+    const page = await client.queryEvents({
+      query,
+      cursor,
+      limit: 50,
+    });
+    
+    allEvents.push(...page.data);
+    hasMore = page.hasNextPage;
+    cursor = page.nextCursor;
+  }
+  
+  return allEvents;
+}
+
+// Usage
+const allEvents = await getAllEvents({ Sender: address });
+console.log(`Fetched ${allEvents.length} events`);
+```
+
+## Event Subscriptions
+
+Subscribe to real-time event streams using WebSocket:
+
+### Subscribe to Events
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+
+const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+
+// Subscribe to events from a specific sender
+const unsubscribe = await client.subscribeEvent({
+  filter: { Sender: address },
+  onMessage: (event) => {
+    console.log('New event:', event);
+  },
+});
+
+// Unsubscribe when done
+// unsubscribe();
+```
+
+### Subscribe to Event Type
+
+```typescript
+const unsubscribe = await client.subscribeEvent({
+  filter: { 
+    MoveEventType: '0x2::coin::CoinCreated<0x2::iota::IOTA>',
+  },
+  onMessage: (event) => {
+    console.log('Coin created:', event);
+  },
+});
+```
+
+### Subscribe to All Events
+
+```typescript
+const unsubscribe = await client.subscribeEvent({
+  filter: { All: [] },
+  onMessage: (event) => {
+    console.log('Event:', event);
+  },
+});
+```
+
+## Event Structure
+
+Events returned from queries and subscriptions have the following structure:
+
+```typescript
+interface IotaEvent {
+  id: {
+    txDigest: string;
+    eventSeq: string;
+  };
+  packageId: string;
+  transactionModule: string;
+  sender: string;
+  type: string;
+  parsedJson?: Record<string, any>;
+  bcs?: string;
+  timestampMs?: string;
+}
+```
+
+## Parsing Event Data
+
+### Access Parsed JSON
+
+```typescript
+const events = await client.queryEvents({
+  query: { Sender: address },
+});
+
+events.data.forEach((event) => {
+  console.log('Event type:', event.type);
+  console.log('Sender:', event.sender);
+  console.log('Parsed data:', event.parsedJson);
+  
+  // Access specific fields
+  if (event.parsedJson) {
+    console.log('Amount:', event.parsedJson.amount);
+    console.log('Recipient:', event.parsedJson.recipient);
+  }
+});
+```
+
+### Decode BCS Data
+
+```typescript
+import { bcs } from '@iota/iota-sdk/bcs';
+import { fromBase64 } from '@iota/bcs';
+
+const events = await client.queryEvents({
+  query: { Sender: address },
+});
+
+events.data.forEach((event) => {
+  if (event.bcs) {
+    // Decode BCS-encoded event data
+    const bcsBytes = fromBase64(event.bcs);
+    // Deserialize based on event type
+    // const decoded = bcs.de(EventType, bcsBytes);
+  }
+});
+```
+
+## Subscribe to Transactions
+
+Subscribe to transactions matching specific filters:
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+
+const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+
+const unsubscribe = await client.subscribeTransaction({
+  filter: {
+    FromAddress: address,
+  },
+  onMessage: (tx) => {
+    console.log('New transaction:', tx);
+  },
+});
+```
+
+## Common Event Patterns
+
+### Monitor Coin Transfers
+
+```typescript
+const unsubscribe = await client.subscribeEvent({
+  filter: { 
+    MoveEventType: '0x2::pay::PayEvent',
+  },
+  onMessage: (event) => {
+    if (event.parsedJson) {
+      console.log('Transfer:', {
+        from: event.sender,
+        to: event.parsedJson.recipient,
+        amount: event.parsedJson.amount,
+      });
+    }
+  },
+});
+```
+
+### Track NFT Mints
+
+```typescript
+const unsubscribe = await client.subscribeEvent({
+  filter: { 
+    MoveEventModule: {
+      package: nftPackageId,
+      module: 'nft',
+    },
+  },
+  onMessage: (event) => {
+    if (event.type.includes('::MintEvent')) {
+      console.log('NFT minted:', event.parsedJson);
+    }
+  },
+});
+```
+
+### Monitor Smart Contract Activity
+
+```typescript
+const unsubscribe = await client.subscribeEvent({
+  filter: { 
+    MoveEventModule: {
+      package: '0x...',
+      module: 'my_contract',
+    },
+  },
+  onMessage: (event) => {
+    console.log('Contract event:', {
+      type: event.type,
+      data: event.parsedJson,
+      timestamp: event.timestampMs,
+    });
+  },
+});
+```
+
+## Error Handling
+
+```typescript
+try {
+  const events = await client.queryEvents({
+    query: { Sender: address },
+  });
+  
+  console.log('Events:', events);
+} catch (error) {
+  console.error('Error querying events:', error);
+}
+
+// Handle subscription errors
+const unsubscribe = await client.subscribeEvent({
+  filter: { Sender: address },
+  onMessage: (event) => {
+    console.log('Event:', event);
+  },
+}).catch((error) => {
+  console.error('Subscription error:', error);
+});
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Specific Filters">
+    Use the most specific filter possible to reduce data transfer:
+    
+    ```typescript
+    // Good - specific event type
+    const events = await client.queryEvents({
+      query: { 
+        MoveEventType: '0x2::coin::CoinCreated<0x2::iota::IOTA>',
+      },
+    });
+    
+    // Avoid - fetching all events
+    const allEvents = await client.queryEvents({
+      query: { All: [] },
+    });
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle Reconnections">
+    Implement reconnection logic for subscriptions:
+    
+    ```typescript
+    async function subscribeWithReconnect() {
+      let unsubscribe;
+      
+      async function subscribe() {
+        try {
+          unsubscribe = await client.subscribeEvent({
+            filter: { Sender: address },
+            onMessage: (event) => {
+              console.log('Event:', event);
+            },
+          });
+        } catch (error) {
+          console.error('Subscription error, reconnecting...');
+          setTimeout(subscribe, 5000);
+        }
+      }
+      
+      await subscribe();
+      return () => unsubscribe?.();
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Limit Query Results">
+    Always set reasonable limits for event queries:
+    
+    ```typescript
+    const events = await client.queryEvents({
+      query: { Sender: address },
+      limit: 100, // Prevent excessive data transfer
+    });
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Reading Data" icon="book" href="./reading-data">
+    Query other blockchain data
+  </Card>
+  <Card title="Transactions" icon="exchange" href="./transactions">
+    Build and execute transactions
+  </Card>
+  <Card title="GraphQL Transport" icon="diagram-project" href="./graphql-transport">
+    Use GraphQL for advanced queries
+  </Card>
+  <Card title="Examples" icon="code" href="./examples">
+    See complete event examples
+  </Card>
+</CardGroup>

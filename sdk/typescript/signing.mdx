@@ -1,0 +1,401 @@
+---
+title: Transaction Signing with Keypairs
+description: Sign transactions using Ed25519, Secp256k1, and Secp256r1 keypairs
+---
+
+The IOTA TypeScript SDK supports multiple signature schemes for signing transactions. This guide covers keypair generation, management, and transaction signing.
+
+## Supported Signature Schemes
+
+The SDK supports the following signature schemes:
+
+- **Ed25519** - Recommended for most use cases
+- **Secp256k1** - Compatible with Ethereum wallets
+- **Secp256r1** - Hardware wallet support
+
+## Ed25519 Keypairs
+
+### Generate Random Keypair
+
+```typescript
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+
+// Generate a new random keypair
+const keypair = new Ed25519Keypair();
+
+// Or use the static generate method
+const keypair2 = Ed25519Keypair.generate();
+
+console.log('Public key:', keypair.getPublicKey().toBase64());
+console.log('Address:', keypair.getPublicKey().toIotaAddress());
+```
+
+### From Secret Key
+
+Create a keypair from an existing secret key:
+
+```typescript
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+
+// From Bech32-encoded secret key
+const keypair = Ed25519Keypair.fromSecretKey(
+  'iotaprivkey1qz...',
+);
+
+// From raw bytes
+const secretKeyBytes = new Uint8Array([...]);
+const keypair2 = Ed25519Keypair.fromSecretKey(secretKeyBytes);
+```
+
+### From Mnemonic
+
+Derive a keypair from a BIP39 mnemonic phrase:
+
+```typescript
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+
+const mnemonic = 'your twelve word mnemonic phrase goes here today tomorrow yesterday';
+
+// Use default derivation path: m/44'/4218'/0'/0'/0'
+const keypair = Ed25519Keypair.deriveKeypair(mnemonic);
+
+// Use custom derivation path
+const keypair2 = Ed25519Keypair.deriveKeypair(
+  mnemonic,
+  "m/44'/4218'/0'/0'/1'",
+);
+
+console.log('Address:', keypair.getPublicKey().toIotaAddress());
+```
+
+### Export Secret Key
+
+```typescript
+const keypair = new Ed25519Keypair();
+
+// Export as Bech32 string
+const secretKey = keypair.getSecretKey();
+console.log('Secret key:', secretKey);
+
+// Get public key
+const publicKey = keypair.getPublicKey();
+console.log('Public key (base64):', publicKey.toBase64());
+console.log('Public key (hex):', publicKey.toRawBytes());
+```
+
+## Secp256k1 Keypairs
+
+### Generate Keypair
+
+```typescript
+import { Secp256k1Keypair } from '@iota/iota-sdk/keypairs/secp256k1';
+
+// Generate random keypair
+const keypair = new Secp256k1Keypair();
+
+console.log('Address:', keypair.getPublicKey().toIotaAddress());
+```
+
+### From Secret Key
+
+```typescript
+import { Secp256k1Keypair } from '@iota/iota-sdk/keypairs/secp256k1';
+
+// From Bech32 secret key
+const keypair = Secp256k1Keypair.fromSecretKey('iotaprivkey1...');
+
+// From raw bytes
+const secretKeyBytes = new Uint8Array([...]);
+const keypair2 = Secp256k1Keypair.fromSecretKey(secretKeyBytes);
+```
+
+### From Mnemonic
+
+```typescript
+import { Secp256k1Keypair } from '@iota/iota-sdk/keypairs/secp256k1';
+
+const mnemonic = 'your twelve word mnemonic phrase';
+
+// Default path: m/54'/4218'/0'/0/0
+const keypair = Secp256k1Keypair.deriveKeypair(mnemonic);
+
+// Custom path
+const keypair2 = Secp256k1Keypair.deriveKeypair(mnemonic, "m/54'/4218'/0'/0/1");
+```
+
+## Secp256r1 Keypairs
+
+### Generate Keypair
+
+```typescript
+import { Secp256r1Keypair } from '@iota/iota-sdk/keypairs/secp256r1';
+
+const keypair = new Secp256r1Keypair();
+console.log('Address:', keypair.getPublicKey().toIotaAddress());
+```
+
+### From Secret Key
+
+```typescript
+import { Secp256r1Keypair } from '@iota/iota-sdk/keypairs/secp256r1';
+
+const keypair = Secp256r1Keypair.fromSecretKey('iotaprivkey1...');
+```
+
+## Signing Transactions
+
+### Basic Signing
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+const keypair = new Ed25519Keypair();
+
+// Create transaction
+const tx = new Transaction();
+tx.transferObjects([objectId], recipientAddress);
+
+// Sign and execute
+const result = await client.signAndExecuteTransaction({
+  signer: keypair,
+  transaction: tx,
+});
+
+console.log('Transaction digest:', result.digest);
+```
+
+### Manual Signing
+
+Sign a transaction manually without executing:
+
+```typescript
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+const keypair = new Ed25519Keypair();
+const tx = new Transaction();
+tx.transferObjects([objectId], recipientAddress);
+
+// Build and sign the transaction
+const { bytes, signature } = await tx.sign({ 
+  client, 
+  signer: keypair,
+});
+
+console.log('Signature:', signature);
+console.log('Transaction bytes:', bytes);
+```
+
+## Generating Mnemonics
+
+Generate new BIP39 mnemonic phrases:
+
+```typescript
+import { generateMnemonic } from '@iota/iota-sdk/cryptography';
+
+// Generate 12-word mnemonic
+const mnemonic12 = generateMnemonic();
+console.log('12-word mnemonic:', mnemonic12);
+
+// Generate 24-word mnemonic
+const mnemonic24 = generateMnemonic(24);
+console.log('24-word mnemonic:', mnemonic24);
+```
+
+## Key Derivation Paths
+
+### Default Derivation Paths
+
+- **Ed25519**: `m/44'/4218'/0'/0'/0'`
+- **Secp256k1**: `m/54'/4218'/0'/0/0`
+- **Secp256r1**: `m/74'/4218'/0'/0/0`
+
+### Custom Derivation
+
+```typescript
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+
+const mnemonic = 'your mnemonic phrase';
+
+// Derive multiple accounts
+const account0 = Ed25519Keypair.deriveKeypair(mnemonic, "m/44'/4218'/0'/0'/0'");
+const account1 = Ed25519Keypair.deriveKeypair(mnemonic, "m/44'/4218'/0'/0'/1'");
+const account2 = Ed25519Keypair.deriveKeypair(mnemonic, "m/44'/4218'/0'/0'/2'");
+
+console.log('Account 0:', account0.getPublicKey().toIotaAddress());
+console.log('Account 1:', account1.getPublicKey().toIotaAddress());
+console.log('Account 2:', account2.getPublicKey().toIotaAddress());
+```
+
+## Working with Public Keys
+
+### Get IOTA Address
+
+```typescript
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+
+const keypair = new Ed25519Keypair();
+const publicKey = keypair.getPublicKey();
+
+// Get IOTA address (0x-prefixed)
+const address = publicKey.toIotaAddress();
+console.log('Address:', address);
+```
+
+### Serialize Public Key
+
+```typescript
+const publicKey = keypair.getPublicKey();
+
+// Base64 encoding
+const base64 = publicKey.toBase64();
+console.log('Base64:', base64);
+
+// Raw bytes
+const bytes = publicKey.toRawBytes();
+console.log('Bytes:', bytes);
+
+// IOTA bytes (with flag)
+const iotaBytes = publicKey.toIotaBytes();
+console.log('IOTA bytes:', iotaBytes);
+```
+
+## Signature Verification
+
+Verify signatures without executing transactions:
+
+```typescript
+import { verifyTransactionSignature } from '@iota/iota-sdk/verify';
+
+const isValid = await verifyTransactionSignature(
+  transactionBytes,
+  signature,
+);
+
+console.log('Signature valid:', isValid);
+```
+
+## Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Never Expose Secret Keys">
+    Never log, transmit, or store secret keys in plain text:
+    
+    ```typescript
+    // NEVER do this
+    console.log(keypair.getSecretKey());
+    localStorage.setItem('key', keypair.getSecretKey());
+    
+    // Instead, use encrypted storage or secure key management
+    ```
+  </Accordion>
+  
+  <Accordion title="Use Environment Variables">
+    Store sensitive keys in environment variables:
+    
+    ```typescript
+    import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+    
+    const secretKey = process.env.PRIVATE_KEY;
+    if (!secretKey) {
+      throw new Error('PRIVATE_KEY not set');
+    }
+    
+    const keypair = Ed25519Keypair.fromSecretKey(secretKey);
+    ```
+  </Accordion>
+  
+  <Accordion title="Validate Mnemonics">
+    Always validate mnemonic phrases before use:
+    
+    ```typescript
+    import { isValidMnemonics } from '@iota/iota-sdk/cryptography';
+    
+    const mnemonic = 'user provided mnemonic';
+    
+    if (!isValidMnemonics(mnemonic)) {
+      throw new Error('Invalid mnemonic phrase');
+    }
+    
+    const keypair = Ed25519Keypair.deriveKeypair(mnemonic);
+    ```
+  </Accordion>
+  
+  <Accordion title="Use HD Wallets">
+    For managing multiple accounts, use hierarchical deterministic (HD) wallets:
+    
+    ```typescript
+    // Single mnemonic for multiple accounts
+    const mnemonic = generateMnemonic();
+    
+    // Derive multiple accounts
+    const accounts = Array.from({ length: 10 }, (_, i) => 
+      Ed25519Keypair.deriveKeypair(mnemonic, `m/44'/4218'/0'/0'/${i}'`)
+    );
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Keypair Comparison
+
+<Tabs>
+  <Tab title="Ed25519">
+    **Recommended for most use cases**
+    
+    - Fast signature generation and verification
+    - Small signature size (64 bytes)
+    - Deterministic signatures
+    - Default choice for IOTA
+    
+    ```typescript
+    import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+    const keypair = new Ed25519Keypair();
+    ```
+  </Tab>
+  
+  <Tab title="Secp256k1">
+    **Compatible with Ethereum ecosystems**
+    
+    - Same curve used by Bitcoin and Ethereum
+    - Enables cross-chain compatibility
+    - Larger signatures than Ed25519
+    
+    ```typescript
+    import { Secp256k1Keypair } from '@iota/iota-sdk/keypairs/secp256k1';
+    const keypair = new Secp256k1Keypair();
+    ```
+  </Tab>
+  
+  <Tab title="Secp256r1">
+    **Hardware wallet support**
+    
+    - NIST P-256 curve
+    - Supported by hardware security modules
+    - Used in passkeys and secure enclaves
+    
+    ```typescript
+    import { Secp256r1Keypair } from '@iota/iota-sdk/keypairs/secp256r1';
+    const keypair = new Secp256r1Keypair();
+    ```
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Multisig" icon="users" href="./multisig">
+    Multi-signature transaction signing
+  </Card>
+  <Card title="Transactions" icon="exchange" href="./transactions">
+    Build and execute transactions
+  </Card>
+  <Card title="Sponsored Transactions" icon="hand-holding-dollar" href="./sponsored-transactions">
+    Learn about sponsored transactions
+  </Card>
+  <Card title="Examples" icon="code" href="./examples">
+    Complete code examples
+  </Card>
+</CardGroup>

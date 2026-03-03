@@ -1,0 +1,441 @@
+---
+title: Reading Blockchain Data
+description: Query objects, transactions, coins, and other on-chain data using the IOTA TypeScript SDK
+---
+
+The `IotaClient` provides comprehensive read APIs to query blockchain data. This guide covers the most common data retrieval operations.
+
+## Getting Objects
+
+### Get Single Object
+
+Fetch details for a specific object by its ID:
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+
+const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+
+const object = await client.getObject({
+  id: '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+  // Specify which fields to fetch
+  options: { 
+    showContent: true,
+    showOwner: true,
+    showType: true,
+  },
+});
+
+console.log(object);
+```
+
+### Get Multiple Objects
+
+Fetch multiple objects in a single batch request:
+
+```typescript
+const objects = await client.multiGetObjects({
+  ids: [
+    '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+    '0x9ad3de788483877fe348aef7f6ba3e52b9cfee5f52de0694d36b16a6b50c1429',
+  ],
+  // Only fetch the object type
+  options: { showType: true },
+});
+
+console.log(objects);
+```
+
+### Get Owned Objects
+
+Fetch all objects owned by an address:
+
+```typescript
+const ownedObjects = await client.getOwnedObjects({
+  owner: '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+});
+
+console.log(ownedObjects);
+```
+
+## Querying Coins
+
+### Get Coins by Type
+
+Fetch coins of a specific type owned by an address:
+
+```typescript
+// Get USDC coins
+const coins = await client.getCoins({
+  owner: '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+  coinType: '0x65b0553a591d7b13376e03a408e112c706dc0909a79080c810b93b06f922c458::usdc::USDC',
+});
+
+console.log(coins);
+```
+
+### Get All Coins
+
+Fetch all coin objects owned by an address:
+
+```typescript
+const allCoins = await client.getAllCoins({
+  owner: '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+});
+
+console.log(allCoins);
+```
+
+### Get Coin Balance
+
+Fetch the total balance for a specific coin type:
+
+```typescript
+// Get IOTA balance (default coin type)
+const iotaBalance = await client.getBalance({
+  owner: '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+});
+
+// Get balance for a specific coin type
+const usdcBalance = await client.getBalance({
+  owner: '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+  coinType: '0x65b0553a591d7b13376e03a408e112c706dc0909a79080c810b93b06f922c458::usdc::USDC',
+});
+
+console.log('IOTA Balance:', iotaBalance);
+console.log('USDC Balance:', usdcBalance);
+```
+
+### Get All Balances
+
+Fetch balances for all coin types owned by an address:
+
+```typescript
+const allBalances = await client.getAllBalances({
+  owner: '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+});
+
+console.log('All balances:', allBalances);
+```
+
+### Get Coin Metadata
+
+```typescript
+const metadata = await client.getCoinMetadata({
+  coinType: '0x65b0553a591d7b13376e03a408e112c706dc0909a79080c810b93b06f922c458::usdc::USDC',
+});
+
+console.log('Coin metadata:', metadata);
+```
+
+## Querying Transactions
+
+### Get Transaction by Digest
+
+Fetch transaction details using its digest:
+
+```typescript
+const transaction = await client.getTransaction({
+  digest: '9XFneskU8tW7UxQf7tE5qFRfcN4FadtC2Z3HAZkgeETd=',
+  // Specify which fields to include
+  options: {
+    showEffects: true,
+    showInput: true,
+    showEvents: true,
+    showObjectChanges: true,
+    showBalanceChanges: true,
+  },
+});
+
+console.log(transaction);
+```
+
+### Get Multiple Transactions
+
+Fetch multiple transactions in a batch:
+
+```typescript
+const transactions = await client.multiGetTransactions({
+  digests: [
+    '9XFneskU8tW7UxQf7tE5qFRfcN4FadtC2Z3HAZkgeETd=',
+    '17mn5W1CczLwitHCO9OIUbqirNrQ0cuKdyxaNe16SAME=',
+  ],
+  // Fetch input transaction data and effects
+  options: { 
+    showInput: true, 
+    showEffects: true,
+  },
+});
+
+console.log(transactions);
+```
+
+### Query Transactions
+
+Query transactions with filters:
+
+```typescript
+const txQuery = await client.queryTransactions({
+  filter: {
+    FromAddress: '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+  },
+  options: {
+    showEffects: true,
+  },
+  limit: 10,
+});
+
+console.log(txQuery);
+```
+
+## Querying Checkpoints
+
+### Get Latest Checkpoints
+
+Fetch the latest checkpoints in descending order:
+
+```typescript
+const checkpoints = await client.getCheckpoints({ 
+  descendingOrder: true,
+  limit: 100,
+});
+
+checkpoints.data.forEach((checkpoint) => {
+  console.log('---------------------------------------------------------------');
+  console.log('Checkpoint:', checkpoint.sequenceNumber);
+  console.log('---------------------------------------------------------------');
+  checkpoint.transactions.forEach((tx) => {
+    console.log(tx);
+  });
+});
+```
+
+### Get Specific Checkpoint
+
+Fetch a checkpoint by its sequence number:
+
+```typescript
+const checkpoint = await client.getCheckpoint({ id: '1994010' });
+
+console.log('Checkpoint Sequence Num:', checkpoint.sequenceNumber);
+console.log('Checkpoint timestampMs:', checkpoint.timestampMs);
+console.log('Number of Transactions:', checkpoint.transactions.length);
+```
+
+## Querying Events
+
+Query events created by transactions:
+
+```typescript
+const events = await client.queryEvents({
+  query: { 
+    Sender: '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+  },
+  limit: 10,
+});
+
+console.log('Events:', events);
+```
+
+See the [Events guide](./events) for more details on event queries and subscriptions.
+
+## Query Options
+
+Most query methods accept an `options` parameter to control which fields are returned:
+
+<Tabs>
+  <Tab title="Object Options">
+    ```typescript
+    {
+      showType: boolean;           // Show object type
+      showOwner: boolean;          // Show owner information
+      showContent: boolean;        // Show object content
+      showBcs: boolean;            // Show BCS representation
+      showDisplay: boolean;        // Show display metadata
+      showPreviousTransaction: boolean;  // Show previous transaction
+      showStorageRebate: boolean;  // Show storage rebate
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Transaction Options">
+    ```typescript
+    {
+      showInput: boolean;          // Show transaction input
+      showEffects: boolean;        // Show transaction effects
+      showEvents: boolean;         // Show emitted events
+      showObjectChanges: boolean;  // Show object changes
+      showBalanceChanges: boolean; // Show balance changes
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Pagination
+
+Many query methods support pagination:
+
+```typescript
+// First page
+const firstPage = await client.getOwnedObjects({
+  owner: address,
+  limit: 50,
+});
+
+// Next page using cursor
+if (firstPage.hasNextPage && firstPage.nextCursor) {
+  const nextPage = await client.getOwnedObjects({
+    owner: address,
+    cursor: firstPage.nextCursor,
+    limit: 50,
+  });
+}
+```
+
+## Dynamic Fields
+
+Query dynamic fields of an object:
+
+```typescript
+const dynamicFields = await client.getDynamicFields({
+  parentId: '0x...',
+});
+
+// Get a specific dynamic field object
+const dynamicFieldObject = await client.getDynamicFieldObject({
+  parentId: '0x...',
+  name: {
+    type: '0x2::string::String',
+    value: 'field_name',
+  },
+});
+```
+
+## Move Module Information
+
+### Get Normalized Move Module
+
+```typescript
+const module = await client.getNormalizedMoveModule({
+  package: '0x2',
+  module: 'coin',
+});
+
+console.log(module);
+```
+
+### Get All Modules in a Package
+
+```typescript
+const modules = await client.getNormalizedMoveModulesByPackage({
+  package: '0x2',
+});
+
+console.log(modules);
+```
+
+### Get Move Function Argument Types
+
+```typescript
+const argTypes = await client.getMoveFunctionArgTypes({
+  package: '0x2',
+  module: 'coin',
+  function: 'transfer',
+});
+
+console.log(argTypes);
+```
+
+## Protocol and Network Information
+
+### Get Protocol Configuration
+
+```typescript
+const protocolConfig = await client.getProtocolConfig();
+console.log(protocolConfig);
+```
+
+### Get Chain Identifier
+
+```typescript
+const chainId = await client.getChainIdentifier();
+console.log('Chain ID:', chainId);
+```
+
+### Get Total Supply
+
+```typescript
+const supply = await client.getTotalSupply({
+  coinType: '0x2::iota::IOTA',
+});
+console.log('Total supply:', supply);
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Batch Requests">
+    When fetching multiple objects or transactions, use batch methods like `multiGetObjects()` or `multiGetTransactions()` instead of making individual requests:
+    
+    ```typescript
+    // Good - single batch request
+    const objects = await client.multiGetObjects({ ids: [id1, id2, id3] });
+    
+    // Avoid - multiple individual requests
+    const obj1 = await client.getObject({ id: id1 });
+    const obj2 = await client.getObject({ id: id2 });
+    const obj3 = await client.getObject({ id: id3 });
+    ```
+  </Accordion>
+  
+  <Accordion title="Request Only Needed Fields">
+    Use the `options` parameter to request only the fields you need:
+    
+    ```typescript
+    // Only fetch the type, not all object data
+    const objects = await client.multiGetObjects({
+      ids: objectIds,
+      options: { showType: true },
+    });
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle Pagination Properly">
+    For large result sets, implement proper pagination:
+    
+    ```typescript
+    let hasMore = true;
+    let cursor = null;
+    const allObjects = [];
+    
+    while (hasMore) {
+      const page = await client.getOwnedObjects({
+        owner: address,
+        cursor,
+        limit: 50,
+      });
+      
+      allObjects.push(...page.data);
+      hasMore = page.hasNextPage;
+      cursor = page.nextCursor;
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Transactions" icon="exchange" href="./transactions">
+    Learn how to build and execute transactions
+  </Card>
+  <Card title="Events" icon="bell" href="./events">
+    Subscribe to and query blockchain events
+  </Card>
+  <Card title="GraphQL Transport" icon="diagram-project" href="./graphql-transport">
+    Use GraphQL for advanced queries
+  </Card>
+  <Card title="Examples" icon="code" href="./examples">
+    See complete code examples
+  </Card>
+</CardGroup>

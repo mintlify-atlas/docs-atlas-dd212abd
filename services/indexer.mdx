@@ -1,0 +1,226 @@
+---
+title: Indexer Service
+description: Running and using the IOTA Indexer service for off-fullnode data indexing
+---
+
+# IOTA Indexer
+
+The IOTA Indexer is an off-fullnode service that serves data from the IOTA protocol, including both data directly generated from the chain and derivative data.
+
+## Architecture
+
+The Indexer consists of two main components:
+
+- **Sync Worker (Writer)**: Pulls data from a fullnode and writes it to the database
+- **RPC Server (Reader)**: Exposes JSON-RPC APIs to query the indexed data
+
+### Key Features
+
+- Indexer instances expose read, write, and extended JSON-RPC APIs
+- Fullnodes expose read and transaction execution JSON-RPC APIs
+- Validators expose only read-only JSON-RPC APIs
+- Indexer sync workers require `NodeConfig::enable_rest_api` flag set to `true`
+
+## Database Setup
+
+### Install Prerequisites
+
+1. Install [PostgreSQL server](https://www.postgresql.org/download) and start it
+
+2. Install Diesel CLI:
+
+```bash
+cargo install diesel_cli --no-default-features --features postgres
+```
+
+### Create Database
+
+From the `iota/crates/iota-indexer` directory:
+
+```bash
+diesel setup --database-url="postgres://postgres:postgrespw@localhost/iota_indexer"
+```
+
+This creates a database named `iota_indexer` with default credentials:
+- **User**: `postgres`
+- **Password**: `postgrespw`
+
+### Reset Database
+
+To wipe and recreate the database:
+
+```bash
+diesel database reset --database-url="postgres://postgres:postgrespw@localhost/iota_indexer"
+```
+
+## Running the Indexer
+
+### Using Docker Compose (Recommended)
+
+See [pg-services-local](../../dev-tools/pg-services-local/README.md) which automatically sets up:
+- Indexer Sync worker
+- Indexer RPC worker
+- PostgreSQL database
+- Local network
+
+### Standalone Indexer Setup
+
+#### Run as Writer (Sync Worker)
+
+Pulls data from a fullnode and writes to the database:
+
+```bash
+cargo run --bin iota-indexer -- \
+  --db-url "postgres://postgres:postgrespw@localhost/iota_indexer" \
+  indexer \
+  --remote-store-url "http://0.0.0.0:9000/api/v1" \
+  --reset-db
+```
+
+**Command-line Options:**
+- `--db-url`: PostgreSQL database connection URL
+- `--remote-store-url`: Fullnode REST API URL to fetch checkpoint data
+- `--reset-db`: Reset the database before starting
+
+#### Run as Reader (RPC Server)
+
+Exposes JSON-RPC service for querying indexed data:
+
+```bash
+cargo run --bin iota-indexer -- \
+  --db-url "postgres://postgres:postgrespw@localhost/iota_indexer" \
+  json-rpc-service \
+  --rpc-client-url "http://0.0.0.0:9000" \
+  --rpc-address "0.0.0.0:9124"
+```
+
+**Command-line Options:**
+- `--rpc-client-url`: Fullnode RPC URL for transaction execution
+- `--rpc-address`: Address to bind the JSON-RPC server (default: `0.0.0.0:9124`)
+
+### Testing the Connection
+
+Query the indexer via JSON-RPC:
+
+```bash
+curl http://localhost:9124 \
+  --header 'content-type: application/json' \
+  --data '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_getChainIdentifier"
+  }'
+```
+
+## Important Notes
+
+<Warning>
+To have a fully functional indexer, you need to run **both** components:
+- **Writer instance** to populate the database with data from the fullnode
+- **Reader instance** to expose the API
+
+Running only the reader will not provide data unless the database has been populated by a writer.
+</Warning>
+
+## Backfilling Data
+
+When schema changes require backfilling historical data:
+
+```bash
+Usage: iota-indexer run-backfill [OPTIONS] <START> <END> <COMMAND>
+
+Commands:
+  sql        Run a SQL backfill
+  ingestion  Run a backfill driven by the ingestion engine
+
+Arguments:
+  <START>  Start of the range to backfill (inclusive)
+  <END>    End of the range to backfill (inclusive)
+
+Options:
+  --max-concurrency <MAX_CONCURRENCY>  Maximum concurrent tasks [default: 10]
+  --chunk-size <CHUNK_SIZE>            Data chunks per task [default: 1000]
+```
+
+### Backfill Options
+
+**SQL Backfill**: Executes SQL statements directly against the database in chunks
+
+**Ingestion Backfill**: Fetches checkpoint data from an ingestion source. Supported sources:
+- `--data-ingestion-path <DIR>`: Path to directory containing `.chk` files
+- `--remote-store-url <URL>`: Remote store URL (e.g., `http://0.0.0.0:9000/api/v1`)
+- `--rpc-client-url <URL>`: RPC client URL (e.g., `http://0.0.0.0:9000`)
+
+### Example: Backfill `tx-wrapped-or-deleted-objects` Table
+
+```bash
+cargo run --bin iota-indexer -- \
+  --database-url <DATABASE_URL> \
+  run-backfill <START> <END> \
+  ingestion tx-wrapped-or-deleted-objects \
+  --remote-store-url <REMOTE_STORE_URL>
+```
+
+### Error Handling
+
+If a backfill fails, restart from:
+
+```
+restart_from = failed_chunk_start - (max_concurrency * chunk_size)
+```
+
+## CLI Reference
+
+The indexer is transitioning from old CLI to new CLI. Both are currently supported:
+
+```bash
+# Old CLI (deprecated)
+cargo run --bin iota-indexer -- help-deprecated
+
+# New CLI (recommended)
+cargo run --bin iota-indexer -- help
+```
+
+## Experimental Features
+
+### Historic Fallback (REST KV Store)
+
+<Warning>
+Experimental feature subject to change without notice.
+</Warning>
+
+The `--fallback-kv-url` flag enables fallback to a REST KV store for historical data when not available in the primary database. This depends on the `iota-rest-kv` crate API, which is still being finalized.
+
+## Environment Variables
+
+The indexer respects standard PostgreSQL environment variables:
+- `PGHOST`: Database host
+- `PGPORT`: Database port
+- `PGUSER`: Database user
+- `PGPASSWORD`: Database password
+- `PGDATABASE`: Database name
+
+## Running Tests
+
+### Start Test Database
+
+```bash
+docker run --name iota-indexer-tests \
+  -e POSTGRES_PASSWORD=postgrespw \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_DB=iota_indexer \
+  -d -p 5432:5432 postgres
+```
+
+### Run Tests
+
+```bash
+# PostgreSQL integration tests (sequential)
+cargo test --features pg_integration -- --test-threads 1
+
+# RPC tests with shared runtime
+cargo test --profile simulator --features shared_test_runtime
+
+# Using nextest (faster)
+cargo nextest run --features pg_integration --test-threads 1
+```

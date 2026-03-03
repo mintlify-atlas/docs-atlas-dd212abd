@@ -1,0 +1,300 @@
+---
+title: Coin API Methods
+description: JSON-RPC methods for querying coin balances, metadata, and supply information
+---
+
+The Coin API provides access to coin-related data such as coins owned by an address, balances, and metadata. All methods are in the `iotax` namespace.
+
+## iotax_getCoins
+
+Return all Coin objects of a specific coin type owned by an address.
+
+<ParamField path="owner" type="IotaAddress" required>
+  The owner's IOTA address
+</ParamField>
+
+<ParamField path="coin_type" type="String">
+  Optional type name for the coin (e.g., `0x168da5bf1f48dafc111b0a488fa454aca95e0b5e::usdc::USDC`). Defaults to `0x2::iota::IOTA` if not specified
+</ParamField>
+
+<ParamField path="cursor" type="ObjectID">
+  Optional paging cursor for pagination
+</ParamField>
+
+<ParamField path="limit" type="usize">
+  Maximum number of items per page (default: 50, max: 100)
+</ParamField>
+
+<ResponseField name="data" type="Vec<Coin>">
+  List of coin objects
+  
+  <Expandable title="Coin">
+    <ResponseField name="coinType" type="String">
+      The coin type identifier
+    </ResponseField>
+    <ResponseField name="coinObjectId" type="ObjectID">
+      The object ID of the coin
+    </ResponseField>
+    <ResponseField name="version" type="SequenceNumber">
+      The version of the coin object
+    </ResponseField>
+    <ResponseField name="digest" type="ObjectDigest">
+      The digest of the coin object
+    </ResponseField>
+    <ResponseField name="balance" type="BigInt<u64>">
+      The balance value of the coin
+    </ResponseField>
+    <ResponseField name="previousTransaction" type="TransactionDigest">
+      The digest of the previous transaction
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="nextCursor" type="ObjectID">
+  Cursor for the next page, if available
+</ResponseField>
+
+<ResponseField name="hasNextPage" type="boolean">
+  Whether there are more pages available
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iotax_getCoins",
+    "params": [
+      "0x0479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747",
+      "0x2::iota::IOTA",
+      null,
+      10
+    ]
+  }'
+```
+
+## iotax_getAllCoins
+
+Return all Coin objects of all types owned by an address.
+
+<ParamField path="owner" type="IotaAddress" required>
+  The owner's IOTA address
+</ParamField>
+
+<ParamField path="cursor" type="ObjectID">
+  Optional paging cursor
+</ParamField>
+
+<ParamField path="limit" type="usize">
+  Maximum number of items per page
+</ParamField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iotax_getAllCoins",
+    "params": [
+      "0x0479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747",
+      null,
+      50
+    ]
+  }'
+```
+
+## iotax_getBalance
+
+Return the total coin balance for one coin type, owned by the address owner.
+
+<ParamField path="owner" type="IotaAddress" required>
+  The owner's IOTA address
+</ParamField>
+
+<ParamField path="coin_type" type="String">
+  Optional type name for the coin (e.g., `0x168da5bf1f48dafc111b0a488fa454aca95e0b5e::usdc::USDC`). Defaults to `0x2::iota::IOTA` if not specified
+</ParamField>
+
+<ResponseField name="coinType" type="String">
+  The coin type identifier
+</ResponseField>
+
+<ResponseField name="coinObjectCount" type="usize">
+  The number of coin objects for this type
+</ResponseField>
+
+<ResponseField name="totalBalance" type="BigInt<u128>">
+  The total balance across all coins of this type
+</ResponseField>
+
+<ResponseField name="lockedBalance" type="Object">
+  Breakdown of locked balance by epoch
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iotax_getBalance",
+    "params": [
+      "0x0479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747",
+      "0x2::iota::IOTA"
+    ]
+  }'
+```
+
+## iotax_getAllBalances
+
+Return the total coin balance for all coin types owned by an address.
+
+<ParamField path="owner" type="IotaAddress" required>
+  The owner's IOTA address
+</ParamField>
+
+<ResponseField name="balances" type="Vec<Balance>">
+  Array of balance objects, one for each coin type owned
+  
+  Each balance includes:
+  - `coinType` - The coin type identifier
+  - `coinObjectCount` - Number of coin objects
+  - `totalBalance` - Total balance for this coin type
+  - `lockedBalance` - Locked balance breakdown
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iotax_getAllBalances",
+    "params": [
+      "0x0479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747"
+    ]
+  }'
+```
+
+## iotax_getCoinMetadata
+
+Return metadata (e.g., symbol, decimals) for a coin type.
+
+<ParamField path="coin_type" type="String" required>
+  Type name for the coin (e.g., `0x168da5bf1f48dafc111b0a488fa454aca95e0b5e::usdc::USDC`)
+</ParamField>
+
+<ResponseField name="id" type="ObjectID">
+  The object ID of the coin metadata object
+</ResponseField>
+
+<ResponseField name="decimals" type="u8">
+  Number of decimal places the coin uses
+</ResponseField>
+
+<ResponseField name="name" type="String">
+  Human-readable name of the coin
+</ResponseField>
+
+<ResponseField name="symbol" type="String">
+  Symbol or ticker of the coin
+</ResponseField>
+
+<ResponseField name="description" type="String">
+  Description of the coin
+</ResponseField>
+
+<ResponseField name="iconUrl" type="String">
+  URL for the coin icon
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iotax_getCoinMetadata",
+    "params": [
+      "0x2::iota::IOTA"
+    ]
+  }'
+```
+
+## iotax_getTotalSupply
+
+Return the total supply for a coin type.
+
+<ParamField path="coin_type" type="String" required>
+  Type name for the coin (e.g., `0x168da5bf1f48dafc111b0a488fa454aca95e0b5e::usdc::USDC`)
+</ParamField>
+
+<ResponseField name="value" type="BigInt<u64>">
+  The total supply value
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iotax_getTotalSupply",
+    "params": [
+      "0x2::iota::IOTA"
+    ]
+  }'
+```
+
+## iotax_getCirculatingSupply
+
+Return the circulating supply summary for IOTA.
+
+<ResponseField name="circulatingSupply" type="BigInt<u64>">
+  The circulating supply of IOTA
+</ResponseField>
+
+<ResponseField name="totalSupply" type="BigInt<u64>">
+  The total supply of IOTA
+</ResponseField>
+
+<ResponseField name="lockedSupply" type="BigInt<u64>">
+  The locked supply of IOTA
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iotax_getCirculatingSupply",
+    "params": []
+  }'
+```
+
+## Coin Type Format
+
+Coin types follow the format:
+
+```
+<package_id>::<module_name>::<type_name>
+```
+
+Examples:
+- Native IOTA: `0x2::iota::IOTA`
+- Custom token: `0x168da5bf1f48dafc111b0a488fa454aca95e0b5e::usdc::USDC`
+
+## Working with Coin Balances
+
+Coin balances are returned in the smallest unit. To convert to human-readable format:
+
+1. Get the coin metadata to find the decimals
+2. Divide the balance by 10^decimals
+
+Example for IOTA (9 decimals):
+```
+Balance: 1000000000 NANOS = 1.0 IOTA
+```

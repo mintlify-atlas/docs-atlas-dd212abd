@@ -1,0 +1,445 @@
+---
+title: Table Module
+description: Map-like collection with keys and values stored in IOTA's object system
+---
+
+# Table Module
+
+The `iota::table` module provides a map-like collection where keys and values are stored in IOTA's object system rather than directly in the `Table` struct. This enables efficient storage of large datasets.
+
+Source: `crates/iota-framework/packages/iota-framework/sources/table.move`
+
+## Core Type
+
+### Table
+
+```move
+public struct Table<phantom K: copy + drop + store, phantom V: store> has key, store {
+    id: UID,
+    size: u64,
+}
+```
+
+Key properties:
+- `K` must have `copy + drop + store` abilities
+- `V` must have `store` ability
+- The table itself has `key + store` abilities
+- Can be transferred and stored in other objects
+
+## Creating Tables
+
+### new
+
+Create a new empty table:
+
+<ParamField path="ctx" type="&mut TxContext" required>
+  Transaction context
+</ParamField>
+
+```move
+public fun new<K: copy + drop + store, V: store>(ctx: &mut TxContext): Table<K, V>
+```
+
+Example:
+```move
+use iota::table::{Self, Table};
+
+public struct Registry has key {
+    id: UID,
+    users: Table<address, UserProfile>,
+}
+
+public fun create_registry(ctx: &mut TxContext) {
+    let registry = Registry {
+        id: object::new(ctx),
+        users: table::new(ctx),
+    };
+    transfer::share_object(registry);
+}
+```
+
+## Table Operations
+
+### add
+
+Add a key-value pair to the table:
+
+<ParamField path="table" type="&mut Table<K, V>" required>
+  Mutable reference to the table
+</ParamField>
+
+<ParamField path="k" type="K" required>
+  Key to add
+</ParamField>
+
+<ParamField path="v" type="V" required>
+  Value to add
+</ParamField>
+
+```move
+public fun add<K: copy + drop + store, V: store>(table: &mut Table<K, V>, k: K, v: V)
+```
+
+Aborts with `EFieldAlreadyExists` if the key already exists.
+
+Example:
+```move
+public struct UserProfile has store {
+    name: vector<u8>,
+    score: u64,
+}
+
+public fun register_user(
+    registry: &mut Registry,
+    user: address,
+    name: vector<u8>,
+    ctx: &TxContext
+) {
+    let profile = UserProfile { name, score: 0 };
+    table::add(&mut registry.users, user, profile);
+}
+```
+
+### borrow
+
+Immutably borrow a value from the table:
+
+<ParamField path="table" type="&Table<K, V>" required>
+  Reference to the table
+</ParamField>
+
+<ParamField path="k" type="K" required>
+  Key to look up
+</ParamField>
+
+```move
+#[syntax(index)]
+public fun borrow<K: copy + drop + store, V: store>(table: &Table<K, V>, k: K): &V
+```
+
+Aborts with `EFieldDoesNotExist` if the key doesn't exist.
+
+Example:
+```move
+public fun get_user_score(registry: &Registry, user: address): u64 {
+    let profile = table::borrow(&registry.users, user);
+    profile.score
+}
+
+// Method syntax is also supported
+public fun get_user_score_v2(registry: &Registry, user: address): u64 {
+    registry.users[user].score  // Using index syntax
+}
+```
+
+### borrow_mut
+
+Mutably borrow a value from the table:
+
+<ParamField path="table" type="&mut Table<K, V>" required>
+  Mutable reference to the table
+</ParamField>
+
+<ParamField path="k" type="K" required>
+  Key to look up
+</ParamField>
+
+```move
+#[syntax(index)]
+public fun borrow_mut<K: copy + drop + store, V: store>(table: &mut Table<K, V>, k: K): &mut V
+```
+
+Example:
+```move
+public fun update_score(registry: &mut Registry, user: address, points: u64) {
+    let profile = table::borrow_mut(&mut registry.users, user);
+    profile.score = profile.score + points;
+}
+
+// Method syntax
+public fun update_score_v2(registry: &mut Registry, user: address, points: u64) {
+    registry.users[user].score = registry.users[user].score + points;
+}
+```
+
+### remove
+
+Remove a key-value pair and return the value:
+
+<ParamField path="table" type="&mut Table<K, V>" required>
+  Mutable reference to the table
+</ParamField>
+
+<ParamField path="k" type="K" required>
+  Key to remove
+</ParamField>
+
+```move
+public fun remove<K: copy + drop + store, V: store>(table: &mut Table<K, V>, k: K): V
+```
+
+Aborts with `EFieldDoesNotExist` if the key doesn't exist.
+
+Example:
+```move
+public fun unregister_user(registry: &mut Registry, user: address): UserProfile {
+    table::remove(&mut registry.users, user)
+}
+```
+
+### contains
+
+Check if a key exists in the table:
+
+<ParamField path="table" type="&Table<K, V>" required>
+  Reference to the table
+</ParamField>
+
+<ParamField path="k" type="K" required>
+  Key to check
+</ParamField>
+
+```move
+public fun contains<K: copy + drop + store, V: store>(table: &Table<K, V>, k: K): bool
+```
+
+Example:
+```move
+public fun is_registered(registry: &Registry, user: address): bool {
+    table::contains(&registry.users, user)
+}
+```
+
+### length
+
+Get the number of entries in the table:
+
+<ParamField path="table" type="&Table<K, V>" required>
+  Reference to the table
+</ParamField>
+
+```move
+public fun length<K: copy + drop + store, V: store>(table: &Table<K, V>): u64
+```
+
+Example:
+```move
+public fun total_users(registry: &Registry): u64 {
+    table::length(&registry.users)
+}
+```
+
+### is_empty
+
+Check if the table is empty:
+
+<ParamField path="table" type="&Table<K, V>" required>
+  Reference to the table
+</ParamField>
+
+```move
+public fun is_empty<K: copy + drop + store, V: store>(table: &Table<K, V>): bool
+```
+
+## Destroying Tables
+
+### destroy_empty
+
+Destroy an empty table:
+
+<ParamField path="table" type="Table<K, V>" required>
+  Table to destroy (must be empty)
+</ParamField>
+
+```move
+public fun destroy_empty<K: copy + drop + store, V: store>(table: Table<K, V>)
+```
+
+Aborts with `ETableNotEmpty` if the table still contains entries.
+
+Example:
+```move
+public fun cleanup_empty_registry(registry: Registry) {
+    let Registry { id, users } = registry;
+    table::destroy_empty(users);
+    object::delete(id);
+}
+```
+
+### drop
+
+Drop a table (value type must have `drop`):
+
+<ParamField path="table" type="Table<K, V>" required>
+  Table to drop
+</ParamField>
+
+```move
+public fun drop<K: copy + drop + store, V: drop + store>(table: Table<K, V>)
+```
+
+Example:
+```move
+// Only works if UserProfile has the `drop` ability
+public fun cleanup_registry(registry: Registry) {
+    let Registry { id, users } = registry;
+    table::drop(users);  // OK if UserProfile has drop
+    object::delete(id);
+}
+```
+
+## Complete Example: Leaderboard System
+
+```move
+module example::leaderboard {
+    use iota::table::{Self, Table};
+    use iota::object::{Self, UID};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    public struct Leaderboard has key {
+        id: UID,
+        scores: Table<address, PlayerScore>,
+        total_players: u64,
+    }
+
+    public struct PlayerScore has store {
+        name: vector<u8>,
+        score: u64,
+        games_played: u64,
+    }
+
+    const EPlayerNotFound: u64 = 0;
+    const EPlayerAlreadyExists: u64 = 1;
+
+    public fun create_leaderboard(ctx: &mut TxContext) {
+        let leaderboard = Leaderboard {
+            id: object::new(ctx),
+            scores: table::new(ctx),
+            total_players: 0,
+        };
+        transfer::share_object(leaderboard);
+    }
+
+    public fun register_player(
+        leaderboard: &mut Leaderboard,
+        player: address,
+        name: vector<u8>,
+    ) {
+        assert!(!table::contains(&leaderboard.scores, player), EPlayerAlreadyExists);
+        
+        let player_score = PlayerScore {
+            name,
+            score: 0,
+            games_played: 0,
+        };
+        
+        table::add(&mut leaderboard.scores, player, player_score);
+        leaderboard.total_players = leaderboard.total_players + 1;
+    }
+
+    public fun record_game(
+        leaderboard: &mut Leaderboard,
+        player: address,
+        points: u64,
+    ) {
+        assert!(table::contains(&leaderboard.scores, player), EPlayerNotFound);
+        
+        let player_score = table::borrow_mut(&mut leaderboard.scores, player);
+        player_score.score = player_score.score + points;
+        player_score.games_played = player_score.games_played + 1;
+    }
+
+    public fun get_player_score(
+        leaderboard: &Leaderboard,
+        player: address,
+    ): (u64, u64) {
+        assert!(table::contains(&leaderboard.scores, player), EPlayerNotFound);
+        
+        let player_score = table::borrow(&leaderboard.scores, player);
+        (player_score.score, player_score.games_played)
+    }
+
+    public fun remove_player(
+        leaderboard: &mut Leaderboard,
+        player: address,
+    ) {
+        assert!(table::contains(&leaderboard.scores, player), EPlayerNotFound);
+        
+        let PlayerScore { name: _, score: _, games_played: _ } = 
+            table::remove(&mut leaderboard.scores, player);
+        leaderboard.total_players = leaderboard.total_players - 1;
+    }
+
+    public fun total_players(leaderboard: &Leaderboard): u64 {
+        table::length(&leaderboard.scores)
+    }
+
+    public fun is_player_registered(
+        leaderboard: &Leaderboard,
+        player: address,
+    ): bool {
+        table::contains(&leaderboard.scores, player)
+    }
+}
+```
+
+## Error Codes
+
+```move
+const ETableNotEmpty: u64 = 0;  // Attempted to destroy a non-empty table
+```
+
+The module also uses error codes from `dynamic_field`:
+- `EFieldAlreadyExists` - Key already exists in the table
+- `EFieldDoesNotExist` - Key not found in the table
+
+## Table Identity
+
+Each `Table` has a unique identity:
+
+```move
+let table1 = table::new<u64, bool>(ctx);
+let table2 = table::new<u64, bool>(ctx);
+table::add(&mut table1, 0, false);
+table::add(&mut table2, 0, false);
+
+// table1 != table2 even though they have the same contents
+assert!(&table1 != &table2);
+```
+
+Tables are compared by object ID, not by contents.
+
+## Best Practices
+
+1. **Check existence before accessing**: Use `contains` to avoid aborts
+```move
+if (table::contains(&my_table, key)) {
+    let value = table::borrow(&my_table, key);
+}
+```
+
+2. **Clean up properly**: Remove all entries before calling `destroy_empty`
+```move
+// Remove all entries first
+while (!table::is_empty(&my_table)) {
+    // remove entries
+}
+table::destroy_empty(my_table);
+```
+
+3. **Use for large datasets**: Tables are more gas-efficient than vectors for large datasets
+
+4. **Consider Bag for heterogeneous values**: If you need to store different value types, use `Bag` instead
+
+5. **Index syntax**: Use `table[key]` for cleaner code where supported
+
+## Comparison with Other Collections
+
+| Feature | Table | VecMap | Bag |
+|---------|-------|--------|-----|
+| Key type | Homogeneous | Homogeneous | Heterogeneous |
+| Value type | Homogeneous | Homogeneous | Heterogeneous |
+| Storage | Object system | In struct | Object system |
+| Best for | Large datasets | Small datasets | Mixed types |
+| Iteration | No | Yes | No |

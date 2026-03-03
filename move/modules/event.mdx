@@ -1,0 +1,442 @@
+---
+title: Event Module
+description: Emit custom events for off-chain tracking and indexing in IOTA Move
+---
+
+# Event Module
+
+The `iota::event` module provides functionality for emitting custom events that can be tracked off-chain. Events are essential for building indexes, monitoring contract activity, and creating responsive dApps.
+
+Source: `crates/iota-framework/packages/iota-framework/sources/event.move`
+
+## Core Function
+
+### emit
+
+Emit a custom event that will be included in the transaction effects:
+
+<ParamField path="event" type="T" required>
+  Event data to emit (must have copy + drop)
+</ParamField>
+
+```move
+public native fun emit<T: copy + drop>(event: T);
+```
+
+The event must have both `copy` and `drop` abilities.
+
+## Event Properties
+
+Every emitted event automatically includes:
+
+- **Sender**: Transaction sender address
+- **Type signature**: Full type of `T` (e.g., `0x123::my_module::ItemPurchased`)
+- **Event data**: The value of `T`
+- **Timestamp**: Local to the node
+- **Transaction digest**: The transaction that emitted the event
+
+## Basic Usage
+
+### Define Event Struct
+
+Create a struct with `copy + drop` abilities:
+
+```move
+module example::marketplace {
+    use iota::event;
+    use iota::object::ID;
+
+    public struct ItemPurchased has copy, drop {
+        item_id: ID,
+        buyer: address,
+        price: u64,
+    }
+
+    public fun buy(/* ... */) {
+        // Purchase logic...
+        
+        event::emit(ItemPurchased {
+            item_id: /* ... */,
+            buyer: /* ... */,
+            price: /* ... */,
+        });
+    }
+}
+```
+
+### Emit Multiple Events
+
+You can emit multiple events in a single transaction:
+
+```move
+public struct TradeStarted has copy, drop {
+    trade_id: ID,
+    initiator: address,
+}
+
+public struct TradeCompleted has copy, drop {
+    trade_id: ID,
+    success: bool,
+}
+
+public fun execute_trade(/* ... */) {
+    let trade_id = /* ... */;
+    
+    event::emit(TradeStarted {
+        trade_id,
+        initiator: ctx.sender(),
+    });
+    
+    // Trade logic...
+    
+    event::emit(TradeCompleted {
+        trade_id,
+        success: true,
+    });
+}
+```
+
+## Event Patterns
+
+### Lifecycle Events
+
+Track object creation, updates, and deletion:
+
+```move
+module example::nft {
+    use iota::event;
+    use iota::object::{Self, ID, UID};
+
+    public struct NFTMinted has copy, drop {
+        nft_id: ID,
+        creator: address,
+        name: vector<u8>,
+    }
+
+    public struct NFTTransferred has copy, drop {
+        nft_id: ID,
+        from: address,
+        to: address,
+    }
+
+    public struct NFTBurned has copy, drop {
+        nft_id: ID,
+        owner: address,
+    }
+
+    public fun mint(name: vector<u8>, ctx: &mut TxContext) {
+        let nft_id = /* create NFT */;
+        
+        event::emit(NFTMinted {
+            nft_id,
+            creator: ctx.sender(),
+            name,
+        });
+    }
+
+    public fun transfer(nft_id: ID, from: address, to: address) {
+        // Transfer logic...
+        
+        event::emit(NFTTransferred {
+            nft_id,
+            from,
+            to,
+        });
+    }
+
+    public fun burn(nft_id: ID, owner: address) {
+        // Burn logic...
+        
+        event::emit(NFTBurned {
+            nft_id,
+            owner,
+        });
+    }
+}
+```
+
+### State Change Events
+
+Track important state changes:
+
+```move
+module example::governance {
+    use iota::event;
+    use iota::object::ID;
+
+    public struct ProposalCreated has copy, drop {
+        proposal_id: ID,
+        proposer: address,
+        description: vector<u8>,
+    }
+
+    public struct VoteCast has copy, drop {
+        proposal_id: ID,
+        voter: address,
+        vote: bool,  // true = yes, false = no
+        voting_power: u64,
+    }
+
+    public struct ProposalExecuted has copy, drop {
+        proposal_id: ID,
+        result: bool,
+        yes_votes: u64,
+        no_votes: u64,
+    }
+
+    public fun create_proposal(/* ... */) {
+        let proposal_id = /* ... */;
+        
+        event::emit(ProposalCreated {
+            proposal_id,
+            proposer: ctx.sender(),
+            description: /* ... */,
+        });
+    }
+
+    public fun vote(proposal_id: ID, vote: bool, voting_power: u64, ctx: &TxContext) {
+        // Voting logic...
+        
+        event::emit(VoteCast {
+            proposal_id,
+            voter: ctx.sender(),
+            vote,
+            voting_power,
+        });
+    }
+}
+```
+
+### Financial Events
+
+Track transactions and payments:
+
+```move
+module example::defi {
+    use iota::event;
+    use iota::object::ID;
+
+    public struct Deposit has copy, drop {
+        pool_id: ID,
+        depositor: address,
+        amount: u64,
+        shares_minted: u64,
+    }
+
+    public struct Withdrawal has copy, drop {
+        pool_id: ID,
+        withdrawer: address,
+        shares_burned: u64,
+        amount: u64,
+    }
+
+    public struct Swap has copy, drop {
+        pool_id: ID,
+        trader: address,
+        amount_in: u64,
+        amount_out: u64,
+        token_in: vector<u8>,
+        token_out: vector<u8>,
+    }
+
+    public fun deposit(/* ... */) {
+        event::emit(Deposit {
+            pool_id: /* ... */,
+            depositor: ctx.sender(),
+            amount: /* ... */,
+            shares_minted: /* ... */,
+        });
+    }
+}
+```
+
+## Phantom Type Parameters
+
+Use phantom type parameters to make events type-specific:
+
+```move
+public struct TokenMinted<phantom T> has copy, drop {
+    amount: u64,
+    recipient: address,
+}
+
+public fun mint<T>(/* ... */) {
+    event::emit(TokenMinted<T> {
+        amount: 1000,
+        recipient: ctx.sender(),
+    });
+}
+```
+
+This allows filtering events by token type off-chain.
+
+## Complete Example: Marketplace
+
+```move
+module example::marketplace {
+    use iota::event;
+    use iota::object::{Self, ID, UID};
+    use iota::coin::{Self, Coin};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    // Events
+    public struct ItemListed has copy, drop {
+        item_id: ID,
+        seller: address,
+        price: u64,
+    }
+
+    public struct ItemDelisted has copy, drop {
+        item_id: ID,
+        seller: address,
+    }
+
+    public struct ItemSold has copy, drop {
+        item_id: ID,
+        seller: address,
+        buyer: address,
+        price: u64,
+    }
+
+    public struct PriceUpdated has copy, drop {
+        item_id: ID,
+        old_price: u64,
+        new_price: u64,
+    }
+
+    // Marketplace logic
+    public struct Listing<T: key + store> has key {
+        id: UID,
+        seller: address,
+        price: u64,
+        item: Option<T>,
+    }
+
+    public fun list<T: key + store>(
+        item: T,
+        price: u64,
+        ctx: &mut TxContext
+    ) {
+        let item_id = object::id(&item);
+        let listing = Listing {
+            id: object::new(ctx),
+            seller: ctx.sender(),
+            price,
+            item: option::some(item),
+        };
+        
+        event::emit(ItemListed {
+            item_id,
+            seller: ctx.sender(),
+            price,
+        });
+        
+        transfer::share_object(listing);
+    }
+
+    public fun delist<T: key + store>(
+        listing: Listing<T>,
+        ctx: &TxContext
+    ): T {
+        let Listing { id, seller, price: _, item } = listing;
+        assert!(seller == ctx.sender(), 0);
+        
+        let item = item.destroy_some();
+        let item_id = object::id(&item);
+        
+        event::emit(ItemDelisted {
+            item_id,
+            seller,
+        });
+        
+        id.delete();
+        item
+    }
+
+    public fun purchase<T: key + store, C>(
+        listing: &mut Listing<T>,
+        payment: Coin<C>,
+        ctx: &mut TxContext
+    ): T {
+        assert!(payment.value() >= listing.price, 1);
+        
+        let item = listing.item.extract();
+        let item_id = object::id(&item);
+        
+        event::emit(ItemSold {
+            item_id,
+            seller: listing.seller,
+            buyer: ctx.sender(),
+            price: listing.price,
+        });
+        
+        transfer::public_transfer(payment, listing.seller);
+        item
+    }
+
+    public fun update_price<T: key + store>(
+        listing: &mut Listing<T>,
+        new_price: u64,
+        ctx: &TxContext
+    ) {
+        assert!(listing.seller == ctx.sender(), 0);
+        
+        let item_id = object::id(listing.item.borrow());
+        
+        event::emit(PriceUpdated {
+            item_id,
+            old_price: listing.price,
+            new_price,
+        });
+        
+        listing.price = new_price;
+    }
+}
+```
+
+## Testing Support
+
+The module provides testing utilities:
+
+```move
+#[test_only]
+public native fun num_events(): u32;
+
+#[test_only]
+public native fun events_by_type<T: copy + drop>(): vector<T>;
+```
+
+Example test:
+```move
+#[test]
+fun test_events() {
+    use iota::event;
+    
+    let ctx = &mut tx_context::dummy();
+    
+    // Execute function that emits events
+    create_item(ctx);
+    
+    // Check events
+    assert!(event::num_events() == 1, 0);
+    let events = event::events_by_type<ItemCreated>();
+    assert!(events.length() == 1, 0);
+}
+```
+
+## Best Practices
+
+1. **Always emit events for important actions**: This enables off-chain tracking and indexing
+
+2. **Include relevant IDs**: Always include object IDs so events can be correlated with on-chain data
+
+3. **Use descriptive names**: Event names should clearly indicate what happened (e.g., `ItemPurchased`, not `Event1`)
+
+4. **Keep event data minimal**: Include only essential information; additional data can be queried on-chain
+
+5. **Use phantom types**: Use phantom type parameters to make events type-specific for better filtering
+
+6. **Document event fields**: Add comments explaining what each field represents
+
+7. **Version your events**: If you need to change an event structure, create a new event type (e.g., `ItemPurchasedV2`)

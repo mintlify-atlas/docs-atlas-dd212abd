@@ -1,0 +1,222 @@
+---
+title: Setup development environment
+description: Install and configure the necessary tools to start building on IOTA, including the IOTA CLI, Move compiler, and development dependencies.
+---
+
+Before you can start building on IOTA, you need to set up your development environment with the necessary tools and dependencies.
+
+## Prerequisites
+
+Ensure you have the following installed on your system:
+
+- **Rust** (latest stable version)
+- **Git**
+- **pnpm** (version 9.6.0 to 9.15.9) for TypeScript SDK development
+- A code editor (VS Code recommended)
+
+## Install the IOTA CLI
+
+The IOTA CLI is your primary tool for interacting with the IOTA network and managing Move packages.
+
+<Steps>
+  <Step title="Install Rust">
+    If you don't have Rust installed, download it from [rust-lang.org](https://rust-lang.org):
+
+    ```bash
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    ```
+
+    Follow the on-screen instructions to complete the installation.
+  </Step>
+
+  <Step title="Clone the IOTA repository">
+    ```bash
+    git clone https://github.com/iotaledger/iota.git
+    cd iota
+    ```
+  </Step>
+
+  <Step title="Build and install IOTA CLI">
+    ```bash
+    cargo build --release --bin iota
+    ```
+
+    Add the binary to your PATH or install it globally:
+
+    ```bash
+    cargo install --path crates/iota
+    ```
+  </Step>
+
+  <Step title="Verify installation">
+    Check that the IOTA CLI is installed correctly:
+
+    ```bash
+    iota --version
+    ```
+
+    You should see output with the version number.
+  </Step>
+</Steps>
+
+## Configure IOTA CLI
+
+<Steps>
+  <Step title="Initialize IOTA client">
+    Set up your IOTA client configuration:
+
+    ```bash
+    iota client
+    ```
+
+    This command initializes the client and creates a configuration file at `~/.iota/iota_config/client.yaml`.
+  </Step>
+
+  <Step title="Connect to a network">
+    Choose which IOTA network to connect to:
+
+    <CodeGroup>
+      ```bash Testnet
+      iota client new-env --alias testnet --rpc https://api.testnet.iota.cafe:443
+      iota client switch --env testnet
+      ```
+
+      ```bash Devnet
+      iota client new-env --alias devnet --rpc https://api.devnet.iota.cafe:443
+      iota client switch --env devnet
+      ```
+
+      ```bash Local
+      iota client new-env --alias local --rpc http://127.0.0.1:9000
+      iota client switch --env local
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Create or import an address">
+    Create a new address or import an existing one:
+
+    <CodeGroup>
+      ```bash Create new
+      iota client new-address ed25519
+      ```
+
+      ```bash Import existing
+      iota keytool import "your-private-key" ed25519
+      ```
+    </CodeGroup>
+
+    Set your active address:
+
+    ```bash
+    iota client active-address
+    ```
+  </Step>
+
+  <Step title="Request test tokens">
+    For testnet or devnet, request tokens from the faucet:
+
+    ```bash
+    iota client faucet
+    ```
+
+    Check your balance:
+
+    ```bash
+    iota client gas
+    ```
+  </Step>
+</Steps>
+
+## Install Move development tools
+
+<Steps>
+  <Step title="Verify Move compiler">
+    The Move compiler is included with the IOTA CLI. Test it:
+
+    ```bash
+    iota move --help
+    ```
+  </Step>
+
+  <Step title="Install IDE extensions">
+    For VS Code, install the Move language extension:
+
+    - Open VS Code
+    - Go to Extensions (Ctrl+Shift+X)
+    - Search for "Move"
+    - Install the Move language support extension
+  </Step>
+</Steps>
+
+## Set up TypeScript SDK (optional)
+
+If you plan to build frontend applications, install the IOTA TypeScript SDK:
+
+```bash
+npm install @iota/iota-sdk
+```
+
+For the latest experimental version:
+
+```bash
+npm install @iota/iota-sdk@experimental
+```
+
+## Verify your setup
+
+Confirm everything is working:
+
+```bash
+# Check IOTA CLI
+iota --version
+
+# Check active environment
+iota client active-env
+
+# Check active address
+iota client active-address
+
+# Check gas balance
+iota client gas
+```
+
+## Next steps
+
+Now that your environment is set up, you're ready to:
+
+- Create your first Move package
+- Write and deploy smart contracts
+- Interact with the IOTA blockchain
+
+## Troubleshooting
+
+### Rust toolchain issues
+
+If you encounter Rust version issues, check the required version:
+
+```bash
+cat rust-toolchain.toml
+```
+
+Update your Rust toolchain:
+
+```bash
+rustup update
+```
+
+### Network connection issues
+
+If you cannot connect to a network, verify:
+
+- Your internet connection is active
+- The RPC endpoint is correct
+- Firewall settings allow outbound connections
+
+### CLI not found
+
+If the `iota` command is not recognized:
+
+- Ensure the binary is in your PATH
+- Try using the full path to the binary
+- Restart your terminal after installation

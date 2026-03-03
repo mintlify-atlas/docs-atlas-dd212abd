@@ -1,0 +1,441 @@
+---
+title: Development best practices
+description: Follow these best practices and conventions to write secure, efficient, and maintainable Move smart contracts on IOTA.
+---
+
+Follow these best practices to write high-quality, secure, and maintainable Move smart contracts on IOTA.
+
+## Code organization
+
+### Module structure
+
+Organize your modules with clear sections:
+
+```move
+module my_package::example {
+    // === Imports ===
+    use iota::object::{Self, UID};
+    use iota::transfer;
+    use iota::tx_context::{Self, TxContext};
+
+    // === Error codes ===
+    const ENotAuthorized: u64 = 0;
+    const EInvalidAmount: u64 = 1;
+    const EInsufficientBalance: u64 = 2;
+
+    // === Constants ===
+    const MAX_SUPPLY: u64 = 1_000_000;
+    const MIN_AMOUNT: u64 = 100;
+
+    // === Structs ===
+    public struct MyObject has key {
+        id: UID,
+        value: u64,
+    }
+
+    // === Init function ===
+    fun init(ctx: &mut TxContext) {
+        // Module initialization
+    }
+
+    // === Public functions ===
+    public fun create_object(value: u64, ctx: &mut TxContext): MyObject {
+        // Implementation
+    }
+
+    // === Private functions ===
+    fun internal_helper(value: u64): u64 {
+        // Implementation
+    }
+
+    // === Test-only code ===
+    #[test_only]
+    use iota::test_scenario;
+
+    #[test]
+    fun test_create_object() {
+        // Test implementation
+    }
+}
+```
+
+### File organization
+
+```
+my_package/
+├── Move.toml
+├── sources/
+│   ├── core.move          # Core data structures
+│   ├── logic.move         # Business logic
+│   ├── admin.move         # Admin functions
+│   └── utils.move         # Utility functions
+└── tests/
+    ├── core_tests.move
+    ├── logic_tests.move
+    └── integration_tests.move
+```
+
+## Naming conventions
+
+### Module names
+
+- Use lowercase with underscores: `my_module`
+- Be descriptive: `token_manager`, `nft_marketplace`
+- Avoid generic names: Use `sword_game` not `game`
+
+### Struct names
+
+- Use PascalCase: `MyStruct`, `TokenMetadata`
+- Be specific: `AdminCap` not `Cap`
+- Suffix capability objects: `MintCap`, `AdminCap`, `TreasuryCap`
+
+### Function names
+
+- Use snake_case: `create_token`, `transfer_admin`
+- Start with verb: `get_value`, `set_owner`, `mint_token`
+- Be explicit: `mint_to_address` not `mint`
+
+### Constants
+
+```move
+// Error codes: prefix with E
+const ENotAuthorized: u64 = 0;
+const EInvalidAmount: u64 = 1;
+
+// Configuration: all caps
+const MAX_SUPPLY: u64 = 1_000_000;
+const DEFAULT_FEE: u64 = 100;
+
+// Use underscores for readability
+const ONE_MILLION: u64 = 1_000_000;
+const TEN_PERCENT: u64 = 10_00;  // basis points
+```
+
+## Security best practices
+
+### Authorization checks
+
+Always verify permissions:
+
+```move
+public struct AdminCap has key, store {
+    id: UID,
+}
+
+public struct Registry has key {
+    id: UID,
+    owner: address,
+    items: Table<ID, Item>,
+}
+
+// Good: requires capability
+public fun admin_action(_cap: &AdminCap, registry: &mut Registry) {
+    // Caller must own AdminCap to call this
+}
+
+// Good: checks ownership
+public fun owner_action(registry: &mut Registry, ctx: &TxContext) {
+    assert!(registry.owner == tx_context::sender(ctx), ENotAuthorized);
+    // Proceed with action
+}
+
+// Bad: no authorization check
+public fun dangerous_action(registry: &mut Registry) {
+    // Anyone can call this!
+}
+```
+
+### Input validation
+
+Validate all inputs:
+
+```move
+const EInvalidAmount: u64 = 0;
+const EAmountTooLarge: u64 = 1;
+const EZeroAddress: u64 = 2;
+
+public fun transfer_tokens(
+    amount: u64,
+    recipient: address,
+    ctx: &TxContext
+) {
+    // Validate amount
+    assert!(amount > 0, EInvalidAmount);
+    assert!(amount <= MAX_TRANSFER, EAmountTooLarge);
+
+    // Validate address
+    assert!(recipient != @0x0, EZeroAddress);
+
+    // Proceed with transfer
+}
+```
+
+### Integer overflow protection
+
+Move 2024 has built-in overflow checks, but be explicit:
+
+```move
+// Good: explicit bounds checking
+public fun add_checked(a: u64, b: u64): u64 {
+    assert!(a <= MAX_U64 - b, EOverflow);
+    a + b
+}
+
+// Good: use smaller types when appropriate
+public struct Counter has key {
+    id: UID,
+    value: u8,  // 0-255, can't overflow for small counters
+}
+```
+
+### Reentrancy protection
+
+Move's ownership model prevents most reentrancy, but be careful with shared objects:
+
+```move
+// Safe: owned objects can't be accessed during execution
+public fun safe_transfer(obj: MyObject, recipient: address) {
+    transfer::transfer(obj, recipient);
+}
+
+// Careful: shared objects can be accessed in the same transaction
+public fun shared_operation(shared_obj: &mut SharedObject) {
+    // Update state BEFORE external calls
+    shared_obj.balance = shared_obj.balance - amount;
+
+    // Then perform operations
+    // ...
+}
+```
+
+## Performance optimization
+
+### Minimize gas costs
+
+```move
+// Good: use native types
+public struct Efficient has key {
+    id: UID,
+    count: u64,        // 8 bytes
+    enabled: bool,     // 1 byte
+}
+
+// Bad: wasteful types
+public struct Wasteful has key {
+    id: UID,
+    count: vector<u8>, // unnecessary vector
+    enabled: u64,      // u64 for boolean
+}
+
+// Good: batch operations
+public fun mint_batch(
+    treasury: &mut TreasuryCap,
+    amounts: vector<u64>,
+    recipients: vector<address>,
+    ctx: &mut TxContext
+) {
+    let len = vector::length(&amounts);
+    let mut i = 0;
+    while (i < len) {
+        let amount = *vector::borrow(&amounts, i);
+        let recipient = *vector::borrow(&recipients, i);
+        let coin = coin::mint(treasury, amount, ctx);
+        transfer::public_transfer(coin, recipient);
+        i = i + 1;
+    };
+}
+```
+
+### Use appropriate data structures
+
+```move
+// For small, fixed collections: use fields
+public struct Small has key {
+    id: UID,
+    value1: u64,
+    value2: u64,
+    value3: u64,
+}
+
+// For dynamic collections: use Table
+public struct Dynamic has key {
+    id: UID,
+    items: Table<ID, Item>,
+}
+
+// For ordered data: use vector
+public struct Ordered has key {
+    id: UID,
+    items: vector<Item>,
+}
+
+// For heterogeneous data: use Bag
+public struct Heterogeneous has key {
+    id: UID,
+    items: Bag,  // Can store different types
+}
+```
+
+## Error handling
+
+### Define clear error codes
+
+```move
+// Group related errors
+const ENotAuthorized: u64 = 0;
+const EInvalidPermission: u64 = 1;
+
+const EInvalidAmount: u64 = 100;
+const EInsufficientBalance: u64 = 101;
+const EAmountTooLarge: u64 = 102;
+
+const EInvalidState: u64 = 200;
+const EAlreadyInitialized: u64 = 201;
+const ENotInitialized: u64 = 202;
+```
+
+### Use descriptive assertions
+
+```move
+// Good: clear error messages through error codes
+assert!(amount > 0, EInvalidAmount);
+assert!(balance >= amount, EInsufficientBalance);
+assert!(sender == owner, ENotAuthorized);
+
+// Bad: generic error code
+assert!(amount > 0, 1);
+```
+
+## Testing best practices
+
+### Comprehensive test coverage
+
+```move
+#[test_only]
+module my_package::tests {
+    // Test normal operation
+    #[test]
+    fun test_normal_flow() { }
+
+    // Test edge cases
+    #[test]
+    fun test_zero_amount() { }
+
+    #[test]
+    fun test_max_amount() { }
+
+    // Test authorization
+    #[test]
+    #[expected_failure(abort_code = ENotAuthorized)]
+    fun test_unauthorized_access() { }
+
+    // Test state transitions
+    #[test]
+    fun test_state_changes() { }
+}
+```
+
+### Use test constants
+
+```move
+#[test_only]
+const ADMIN: address = @0xAD;
+#[test_only]
+const ALICE: address = @0xA11CE;
+#[test_only]
+const BOB: address = @0xB0B;
+
+#[test_only]
+const TEST_AMOUNT: u64 = 1000;
+```
+
+## Documentation
+
+### Document public functions
+
+```move
+/// Create a new token with the specified parameters.
+/// 
+/// # Arguments
+/// * `treasury` - The treasury capability for minting
+/// * `amount` - The amount of tokens to mint (must be > 0)
+/// * `recipient` - The address to receive the tokens
+/// * `ctx` - The transaction context
+/// 
+/// # Errors
+/// * `EInvalidAmount` - If amount is 0
+/// * `EZeroAddress` - If recipient is @0x0
+public fun mint_token(
+    treasury: &mut TreasuryCap<MY_COIN>,
+    amount: u64,
+    recipient: address,
+    ctx: &mut TxContext
+) {
+    assert!(amount > 0, EInvalidAmount);
+    assert!(recipient != @0x0, EZeroAddress);
+    
+    let coin = coin::mint(treasury, amount, ctx);
+    transfer::public_transfer(coin, recipient);
+}
+```
+
+### Document structs
+
+```move
+/// Registry storing user information and permissions.
+/// 
+/// This struct maintains a mapping of addresses to user profiles
+/// and tracks admin permissions.
+public struct Registry has key {
+    id: UID,
+    /// Mapping of user addresses to their profiles
+    users: Table<address, UserProfile>,
+    /// The registry owner who can modify settings
+    owner: address,
+}
+```
+
+## Upgrade patterns
+
+### Design for upgradability
+
+```move
+// Use version field
+public struct Registry has key {
+    id: UID,
+    version: u64,
+    data: Bag,  // Flexible storage
+}
+
+// Provide migration functions
+public fun migrate_v1_to_v2(
+    _cap: &AdminCap,
+    registry: &mut Registry
+) {
+    assert!(registry.version == 1, EInvalidVersion);
+    // Perform migration
+    registry.version = 2;
+}
+```
+
+## Common pitfalls to avoid
+
+1. **Forgetting to delete UIDs**: Always delete UIDs when destroying objects
+2. **Not validating inputs**: Check all parameters before processing
+3. **Missing authorization checks**: Verify caller has permission
+4. **Inefficient data structures**: Choose appropriate collections
+5. **Poor error messages**: Use descriptive error codes
+6. **Inadequate testing**: Test all code paths and edge cases
+7. **Ignoring gas costs**: Optimize for efficiency
+8. **Hardcoding values**: Use constants for magic numbers
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="IOTA Move framework" icon="book" href="/building/move-framework">
+    Explore the IOTA framework modules
+  </Card>
+  <Card title="Testing guide" icon="flask" href="/building/testing-debugging">
+    Learn testing and debugging techniques
+  </Card>
+</CardGroup>

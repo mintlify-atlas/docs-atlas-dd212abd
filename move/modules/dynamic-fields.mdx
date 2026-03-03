@@ -1,0 +1,394 @@
+---
+title: Dynamic Fields Module
+description: Add fields to objects dynamically after construction in IOTA Move
+---
+
+# Dynamic Fields Module
+
+The `iota::dynamic_field` module allows adding fields to objects after they've been constructed. Unlike regular fields that must be declared in the struct definition, dynamic fields can have names of any type with `copy + drop + store` abilities.
+
+Source: `crates/iota-framework/packages/iota-framework/sources/dynamic_field.move`
+
+## Core Concepts
+
+Dynamic fields are stored in IOTA's object system, not directly in the object's struct. This provides flexibility but requires careful management.
+
+### Field Type
+
+Internal structure for storing dynamic fields:
+
+```move
+public struct Field<Name: copy + drop + store, Value: store> has key {
+    id: UID,
+    name: Name,
+    value: Value,
+}
+```
+
+## Adding Fields
+
+### add
+
+Add a dynamic field to an object:
+
+<ParamField path="object" type="&mut UID" required>
+  Mutable reference to the object's UID
+</ParamField>
+
+<ParamField path="name" type="Name" required>
+  Field name (must have copy + drop + store)
+</ParamField>
+
+<ParamField path="value" type="Value" required>
+  Field value (must have store)
+</ParamField>
+
+```move
+public fun add<Name: copy + drop + store, Value: store>(
+    object: &mut UID,
+    name: Name,
+    value: Value,
+)
+```
+
+Aborts with `EFieldAlreadyExists` if the field already exists.
+
+Example:
+```move
+use iota::dynamic_field as df;
+
+public struct GameCharacter has key {
+    id: UID,
+    name: vector<u8>,
+}
+
+public fun add_attribute(
+    character: &mut GameCharacter,
+    attribute: vector<u8>,
+    value: u64
+) {
+    df::add(&mut character.id, attribute, value);
+}
+```
+
+## Accessing Fields
+
+### borrow
+
+Immutably borrow a dynamic field:
+
+<ParamField path="object" type="&UID" required>
+  Reference to the object's UID
+</ParamField>
+
+<ParamField path="name" type="Name" required>
+  Field name to borrow
+</ParamField>
+
+```move
+public fun borrow<Name: copy + drop + store, Value: store>(object: &UID, name: Name): &Value
+```
+
+Aborts with:
+- `EFieldDoesNotExist` if field doesn't exist
+- `EFieldTypeMismatch` if field exists but has wrong type
+
+Example:
+```move
+public fun get_attribute(character: &GameCharacter, attribute: vector<u8>): u64 {
+    *df::borrow(&character.id, attribute)
+}
+```
+
+### borrow_mut
+
+Mutably borrow a dynamic field:
+
+<ParamField path="object" type="&mut UID" required>
+  Mutable reference to the object's UID
+</ParamField>
+
+<ParamField path="name" type="Name" required>
+  Field name to borrow
+</ParamField>
+
+```move
+public fun borrow_mut<Name: copy + drop + store, Value: store>(
+    object: &mut UID,
+    name: Name,
+): &mut Value
+```
+
+Example:
+```move
+public fun update_attribute(
+    character: &mut GameCharacter,
+    attribute: vector<u8>,
+    new_value: u64
+) {
+    let attr = df::borrow_mut(&mut character.id, attribute);
+    *attr = new_value;
+}
+```
+
+## Removing Fields
+
+### remove
+
+Remove a dynamic field and return its value:
+
+<ParamField path="object" type="&mut UID" required>
+  Mutable reference to the object's UID
+</ParamField>
+
+<ParamField path="name" type="Name" required>
+  Field name to remove
+</ParamField>
+
+```move
+public fun remove<Name: copy + drop + store, Value: store>(object: &mut UID, name: Name): Value
+```
+
+Aborts with:
+- `EFieldDoesNotExist` if field doesn't exist
+- `EFieldTypeMismatch` if field exists but has wrong type
+
+Example:
+```move
+public fun remove_attribute(
+    character: &mut GameCharacter,
+    attribute: vector<u8>
+): u64 {
+    df::remove(&mut character.id, attribute)
+}
+```
+
+### remove_if_exists
+
+Remove a field if it exists, return `Option<Value>`:
+
+<ParamField path="object" type="&mut UID" required>
+  Mutable reference to the object's UID
+</ParamField>
+
+<ParamField path="name" type="Name" required>
+  Field name to remove
+</ParamField>
+
+```move
+public fun remove_if_exists<Name: copy + drop + store, Value: store>(
+    object: &mut UID,
+    name: Name,
+): Option<Value>
+```
+
+Example:
+```move
+public fun try_remove_attribute(
+    character: &mut GameCharacter,
+    attribute: vector<u8>
+): Option<u64> {
+    df::remove_if_exists(&mut character.id, attribute)
+}
+```
+
+## Checking Field Existence
+
+### exists_
+
+Check if a field exists (without specifying value type):
+
+<ParamField path="object" type="&UID" required>
+  Reference to the object's UID
+</ParamField>
+
+<ParamField path="name" type="Name" required>
+  Field name to check
+</ParamField>
+
+```move
+public fun exists_<Name: copy + drop + store>(object: &UID, name: Name): bool
+```
+
+Example:
+```move
+public fun has_attribute(character: &GameCharacter, attribute: vector<u8>): bool {
+    df::exists_(&character.id, attribute)
+}
+```
+
+### exists_with_type
+
+Check if a field exists with a specific type:
+
+<ParamField path="object" type="&UID" required>
+  Reference to the object's UID
+</ParamField>
+
+<ParamField path="name" type="Name" required>
+  Field name to check
+</ParamField>
+
+```move
+public fun exists_with_type<Name: copy + drop + store, Value: store>(
+    object: &UID,
+    name: Name,
+): bool
+```
+
+Example:
+```move
+public fun has_u64_attribute(character: &GameCharacter, attribute: vector<u8>): bool {
+    df::exists_with_type<vector<u8>, u64>(&character.id, attribute)
+}
+```
+
+## Complete Example: RPG Character System
+
+```move
+module example::rpg {
+    use iota::dynamic_field as df;
+    use iota::object::{Self, UID};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    public struct Character has key {
+        id: UID,
+        name: vector<u8>,
+        level: u64,
+    }
+
+    // Attribute names as constants
+    const STRENGTH: vector<u8> = b"strength";
+    const INTELLIGENCE: vector<u8> = b"intelligence";
+    const DEXTERITY: vector<u8> = b"dexterity";
+
+    public fun create_character(
+        name: vector<u8>,
+        ctx: &mut TxContext
+    ) {
+        let mut character = Character {
+            id: object::new(ctx),
+            name,
+            level: 1,
+        };
+        
+        // Add initial attributes
+        df::add(&mut character.id, STRENGTH, 10u64);
+        df::add(&mut character.id, INTELLIGENCE, 10u64);
+        df::add(&mut character.id, DEXTERITY, 10u64);
+        
+        transfer::transfer(character, ctx.sender());
+    }
+
+    public fun get_strength(character: &Character): u64 {
+        *df::borrow(&character.id, STRENGTH)
+    }
+
+    public fun get_intelligence(character: &Character): u64 {
+        *df::borrow(&character.id, INTELLIGENCE)
+    }
+
+    public fun get_dexterity(character: &Character): u64 {
+        *df::borrow(&character.id, DEXTERITY)
+    }
+
+    public fun level_up(character: &mut Character, attribute: vector<u8>) {
+        character.level = character.level + 1;
+        
+        if (df::exists_<vector<u8>>(&character.id, attribute)) {
+            let attr = df::borrow_mut(&mut character.id, attribute);
+            *attr = *attr + 5;
+        }
+    }
+
+    // Equipment system using dynamic fields
+    public struct Equipment has store {
+        name: vector<u8>,
+        bonus: u64,
+    }
+
+    public fun equip_item(
+        character: &mut Character,
+        slot: vector<u8>,  // "weapon", "armor", etc.
+        item: Equipment
+    ) {
+        if (df::exists_<vector<u8>>(&character.id, slot)) {
+            // Remove old equipment
+            let old_item: Equipment = df::remove(&mut character.id, slot);
+            // Could return to inventory here
+            let Equipment { name: _, bonus: _ } = old_item;
+        };
+        
+        df::add(&mut character.id, slot, item);
+    }
+
+    public fun unequip_item(
+        character: &mut Character,
+        slot: vector<u8>
+    ): Option<Equipment> {
+        df::remove_if_exists(&mut character.id, slot)
+    }
+
+    public fun has_equipment(
+        character: &Character,
+        slot: vector<u8>
+    ): bool {
+        df::exists_with_type<vector<u8>, Equipment>(&character.id, slot)
+    }
+
+    public fun get_equipment_bonus(
+        character: &Character,
+        slot: vector<u8>
+    ): u64 {
+        if (df::exists_with_type<vector<u8>, Equipment>(&character.id, slot)) {
+            df::borrow<vector<u8>, Equipment>(&character.id, slot).bonus
+        } else {
+            0
+        }
+    }
+}
+```
+
+## Error Codes
+
+```move
+const EFieldAlreadyExists: u64 = 0;  // Field already exists
+const EFieldDoesNotExist: u64 = 1;  // Field doesn't exist
+const EFieldTypeMismatch: u64 = 2;  // Field type mismatch
+const EBCSSerializationFailure: u64 = 3;  // Serialization failed
+const ESharedObjectOperationNotSupported: u64 = 4;  // Operation not supported on shared objects
+```
+
+## Best Practices
+
+1. **Use constants for field names**: Define field names as constants to avoid typos
+```move
+const FIELD_NAME: vector<u8> = b"field_name";
+```
+
+2. **Check existence before borrowing**: Use `exists_` or `exists_with_type` to avoid aborts
+```move
+if (df::exists_<K>(&object.id, key)) {
+    let value = df::borrow(&object.id, key);
+}
+```
+
+3. **Use `remove_if_exists` for optional fields**: Safer than `remove` when fields might not exist
+
+4. **Type your field access**: Use `exists_with_type` and specify types in borrows to catch type errors early
+
+5. **Clean up on deletion**: Remove all dynamic fields before deleting the parent object
+
+6. **Document field structure**: Comment what fields your object uses and their types
+
+## Comparison with Regular Fields
+
+| Feature | Regular Fields | Dynamic Fields |
+|---------|---------------|----------------|
+| Declaration | At struct definition | At runtime |
+| Field names | Fixed identifiers | Any type with copy+drop+store |
+| Type safety | Compile-time | Runtime |
+| Storage | In struct | In object system |
+| Gas cost | Lower | Higher |
+| Flexibility | Limited | High |

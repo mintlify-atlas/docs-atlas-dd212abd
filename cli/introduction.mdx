@@ -1,0 +1,104 @@
+---
+title: "IOTA CLI Overview"
+description: "Complete guide to the IOTA command-line interface for interacting with the IOTA network, managing keys, and building Move packages"
+---
+
+The IOTA CLI is a comprehensive command-line tool for interacting with the IOTA network. It provides commands for:
+
+- **Client operations**: Interact with the network, query objects, execute transactions
+- **Move development**: Build, test, and publish Move packages
+- **Key management**: Create and manage keypairs and addresses
+- **Local networks**: Run local IOTA networks for development
+- **Genesis & ceremonies**: Bootstrap new networks and participate in genesis ceremonies
+- **Validator operations**: Manage validator nodes and staking
+
+## Installation
+
+See the [Installation Guide](/cli/installation) for setup instructions.
+
+## Main Commands
+
+### Client Commands
+
+Interact with the IOTA network:
+
+```bash
+iota client [SUBCOMMAND]
+```
+
+See [Client Commands](/cli/client-commands) for details.
+
+### Move Commands
+
+Build and test Move packages:
+
+```bash
+iota move [SUBCOMMAND]
+```
+
+See [Move Commands](/cli/move-commands) for details.
+
+### KeyTool Commands
+
+Manage keys and addresses:
+
+```bash
+iota keytool [SUBCOMMAND]
+```
+
+See [Key Management](/cli/keytool) for details.
+
+### Network Commands
+
+Start and manage local networks:
+
+```bash
+iota start [OPTIONS]
+iota genesis [OPTIONS]
+```
+
+See [Local Network](/cli/local-network) and [Genesis Commands](/cli/genesis-commands) for details.
+
+## Configuration
+
+The IOTA CLI stores configuration in `~/.iota/iota_config/`:
+
+- `client.yaml` - Network configuration and active address
+- `iota.keystore` - Encrypted keypairs
+- `iota.aliases` - Address aliases
+
+## Getting Help
+
+All commands support the `--help` flag:
+
+```bash
+iota --help
+iota client --help
+iota move --help
+```
+
+## Common Flags
+
+Global flags available across commands:
+
+- `--json` - Output results in JSON format
+- `--yes` - Accept defaults without prompting
+- `--client.config <PATH>` - Use custom config file
+- `--client.env <ENV>` - Specify network environment
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Install CLI" icon="download" href="/cli/installation">
+    Get started by installing the IOTA CLI
+  </Card>
+  <Card title="Client Commands" icon="terminal" href="/cli/client-commands">
+    Learn how to interact with the network
+  </Card>
+  <Card title="Move Development" icon="code" href="/cli/move-commands">
+    Build and deploy Move smart contracts
+  </Card>
+  <Card title="Key Management" icon="key" href="/cli/keytool">
+    Create and manage cryptographic keys
+  </Card>
+</CardGroup>

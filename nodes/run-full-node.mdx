@@ -1,0 +1,159 @@
+---
+title: Running a Full Node
+description: Learn how to run an IOTA full node to sync and maintain a copy of the blockchain data.
+---
+
+A full node synchronizes with the IOTA network and maintains a complete copy of the blockchain data. Full nodes are essential for network decentralization and can serve as data sources for applications.
+
+## Prerequisites
+
+Before running a full node, ensure you have:
+
+- A machine with at least 8 CPU cores and 32GB RAM
+- 1TB of available disk space (SSD recommended)
+- A stable internet connection
+- Docker installed (optional, for containerized deployment)
+
+## Installation Methods
+
+### Using Docker
+
+The recommended way to run an IOTA node is using Docker:
+
+<Steps>
+  <Step title="Pull the Docker image">
+    ```bash
+    docker pull iotaledger/iota-node:latest
+    ```
+  </Step>
+
+  <Step title="Create data directory">
+    ```bash
+    mkdir -p $HOME/iota-data
+    ```
+  </Step>
+
+  <Step title="Generate node configuration">
+    Create a `node.yaml` configuration file. See [Configuration](/nodes/configuration) for details.
+  </Step>
+
+  <Step title="Start the node">
+    ```bash
+    docker run -d \
+      --name iota-node \
+      -v $HOME/iota-data:/iota/db \
+      -v $HOME/node.yaml:/iota/node.yaml \
+      -p 9000:9000 \
+      -p 9184:9184 \
+      -p 8080:8080 \
+      -p 8084:8084 \
+      iotaledger/iota-node:latest \
+      iota-node --config-path /iota/node.yaml
+    ```
+  </Step>
+</Steps>
+
+### Building from Source
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/iotaledger/iota.git
+    cd iota
+    ```
+  </Step>
+
+  <Step title="Install Rust and dependencies">
+    ```bash
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    apt install -y cmake clang lld protobuf-compiler libpq-dev
+    ```
+  </Step>
+
+  <Step title="Build the node binary">
+    ```bash
+    cargo build --release --bin iota-node
+    ```
+    
+    The compiled binary will be located at `target/release/iota-node`.
+  </Step>
+
+  <Step title="Run the node">
+    ```bash
+    ./target/release/iota-node --config-path /path/to/node.yaml
+    ```
+  </Step>
+</Steps>
+
+## Command-Line Options
+
+The `iota-node` binary accepts the following command-line arguments:
+
+| Flag | Description | Required |
+|------|-------------|----------|
+| `--config-path` | Path to the node configuration file | Yes |
+| `--listen-address` | Override network address to listen on | No |
+| `--run-with-range-epoch` | Process up to a specific epoch (debugging) | No |
+| `--run-with-range-checkpoint` | Process up to a specific checkpoint (debugging) | No |
+
+### Example Commands
+
+**Start with custom configuration:**
+```bash
+iota-node --config-path /etc/iota/node.yaml
+```
+
+**Override listen address:**
+```bash
+iota-node --config-path node.yaml --listen-address "/ip4/0.0.0.0/tcp/8080"
+```
+
+<Warning>
+  The `--run-with-range-*` flags are intended for debugging and disaster recovery only. Never use them in normal operations.
+</Warning>
+
+## Ports and Networking
+
+Ensure the following ports are accessible:
+
+| Port | Protocol | Purpose |
+|------|----------|----------|
+| 8080 | TCP | gRPC network communication |
+| 8084 | TCP | P2P networking |
+| 9000 | TCP | JSON-RPC API |
+| 9184 | TCP | Prometheus metrics |
+| 1337 | TCP | Admin interface (localhost only) |
+
+## Verifying Node Operation
+
+After starting your node, verify it's running correctly:
+
+<Steps>
+  <Step title="Check node health">
+    ```bash
+    curl http://localhost:9000 -X POST \
+      -H 'Content-Type: application/json' \
+      -d '{"jsonrpc":"2.0","id":1,"method":"iota_getLatestCheckpointSequenceNumber"}'
+    ```
+  </Step>
+
+  <Step title="Monitor metrics">
+    Access Prometheus metrics at:
+    ```
+    http://localhost:9184/metrics
+    ```
+  </Step>
+
+  <Step title="Check logs">
+    For Docker deployments:
+    ```bash
+    docker logs -f iota-node
+    ```
+  </Step>
+</Steps>
+
+## Next Steps
+
+- [Configure your node](/nodes/configuration) with advanced settings
+- [Set up monitoring](/nodes/monitoring) to track node performance
+- [Troubleshoot common issues](/nodes/troubleshooting)

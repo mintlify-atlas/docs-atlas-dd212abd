@@ -1,0 +1,449 @@
+---
+title: Gas and fees
+description: Understanding gas computation, fee structure, and storage costs in IOTA transactions.
+---
+
+Gas is the unit used to measure the computational and storage resources consumed by transactions on IOTA. Every transaction must pay gas fees to compensate validators and prevent network abuse.
+
+## Gas model overview
+
+IOTA's gas model consists of two main components:
+
+1. **Computation gas**: Cost of executing transaction logic
+2. **Storage gas**: Cost of storing objects on-chain
+
+```rust
+pub struct GasCostSummary {
+    // Cost of computation/execution
+    computation_cost: u64,
+    // The burned component of computation cost
+    computation_cost_burned: u64,
+    // Storage cost for objects created/mutated
+    storage_cost: u64,
+    // Storage rebate for objects deleted/mutated
+    storage_rebate: u64,
+    // Non-refundable portion of storage rebate
+    non_refundable_storage_fee: u64,
+}
+```
+
+The final amount charged is:
+
+```
+net_gas_cost = computation_cost + storage_cost - storage_rebate
+```
+
+<Note>
+Storage rebate is returned when objects are deleted or modified, helping to incentivize cleaning up unused state.
+</Note>
+
+## Gas configuration
+
+Every transaction must specify gas configuration:
+
+```rust
+pub struct GasData {
+    // Coins used to pay for gas
+    payment: Vec<ObjectRef>,
+    // Address receiving gas rebate
+    owner: IotaAddress,
+    // Maximum gas units to spend
+    budget: u64,
+    // Price per gas unit
+    price: u64,
+}
+```
+
+### Gas budget
+
+The gas budget is the maximum amount (in MIST, the smallest IOTA unit) the transaction can spend:
+
+```rust
+// Set gas budget
+let gas_budget = 10_000_000; // 0.01 IOTA (10 million MIST)
+
+// Transaction will abort if it exceeds budget
+if gas_used > gas_budget {
+    return Err(ExecutionError::InsufficientGas);
+}
+```
+
+<Warning>
+If a transaction runs out of gas during execution, it aborts and all effects are reverted. However, gas used up to that point is still charged.
+</Warning>
+
+### Gas price
+
+Gas price is the amount paid per unit of gas:
+
+```rust
+// Gas price in MIST per gas unit
+let gas_price = 1000; // Must be >= reference gas price
+
+// Total computation cost
+let total_cost = gas_units_used * gas_price;
+```
+
+**Gas price requirements:**
+- Must be ≥ reference gas price (RGP) set by validators
+- Must be ≤ maximum gas price (protocol config)
+- Higher prices don't speed up execution but affect validator rewards
+
+<Info>
+The reference gas price (RGP) is determined by validators through a coordination mechanism. It typically remains stable unless network conditions change significantly.
+</Info>
+
+## Computation gas
+
+Computation gas covers the cost of executing transaction logic:
+
+### Instruction costs
+
+Each Move bytecode instruction has a gas cost:
+
+```rust
+// Examples of instruction costs (in gas units)
+const LOAD_COST: u64 = 1;
+const STORE_COST: u64 = 1;
+const BRANCH_COST: u64 = 1;
+const CALL_COST: u64 = 10;
+const MUL_COST: u64 = 3;
+```
+
+The Move VM meters execution at the bytecode level:
+
+```move
+public fun expensive_function(n: u64): u64 {
+    let mut sum = 0;
+    let mut i = 0;
+    
+    // Loop costs gas for each iteration
+    while (i < n) {
+        sum = sum + i; // arithmetic costs gas
+        i = i + 1;     // increment costs gas
+    }; // loop check costs gas
+    
+    sum
+}
+// Total gas depends on n
+```
+
+### Transaction overhead
+
+Fixed costs for transaction processing:
+
+- **Signature verification**: Validating transaction signature(s)
+- **Input loading**: Reading input objects from storage
+- **Transaction parsing**: Deserializing transaction data
+- **Output writing**: Storing modified objects
+
+### Type instantiation
+
+Generic type instantiation has additional costs:
+
+```move
+// Each unique type instantiation costs gas
+let v1 = vector::empty<u64>();      // costs gas
+let v2 = vector::empty<address>();  // costs gas (different type)
+let v3 = vector::empty<u64>();      // reuses previous instantiation
+```
+
+## Storage gas
+
+Storage gas covers the cost of persisting data on-chain:
+
+### Storage cost calculation
+
+Storage cost is based on object size in bytes:
+
+```rust
+let storage_cost = object_size_bytes * storage_price_per_byte;
+```
+
+The storage price per byte is set by protocol configuration and adjusts based on network storage capacity.
+
+### When storage is charged
+
+Storage costs are charged when:
+
+1. **Creating new objects**
+   ```move
+   public fun create_object(ctx: &mut TxContext) {
+       let obj = MyObject {
+           id: object::new(ctx),
+           data: vector::empty(),
+       };
+       transfer::transfer(obj, ctx.sender());
+       // Storage cost charged for new object
+   }
+   ```
+
+2. **Mutating existing objects** (if size increases)
+   ```move
+   public fun add_data(obj: &mut MyObject, data: vector<u8>) {
+       vector::append(&mut obj.data, data);
+       // Additional storage cost if object grows
+   }
+   ```
+
+<Note>
+Only the increase in storage size is charged when mutating objects. If an object shrinks, storage rebate is provided.
+</Note>
+
+## Storage rebate
+
+When objects are deleted or shrunk, storage rebate is returned:
+
+```rust
+// Deleting an object
+public fun delete_object(obj: MyObject) {
+    let MyObject { id, data } = obj;
+    object::delete(id);
+    // Storage rebate credited to transaction sender
+}
+```
+
+### Rebate calculation
+
+Not all storage costs are refunded:
+
+```rust
+let potential_rebate = object.storage_cost;
+let non_refundable_rate = 0.01; // 1% is non-refundable
+
+storage_rebate = potential_rebate * (1.0 - non_refundable_rate);
+non_refundable_storage_fee = potential_rebate * non_refundable_rate;
+```
+
+The non-refundable portion goes to the storage fund to maintain sustainability.
+
+<Info>
+Storage rebate incentivizes cleaning up unused objects, preventing state bloat on the blockchain.
+</Info>
+
+## Gas metering during execution
+
+Gas is tracked throughout transaction execution:
+
+```rust
+pub struct GasStatus {
+    // Remaining gas budget
+    remaining_gas: u64,
+    // Gas used for computation
+    computation_gas_used: u64,
+    // Gas used for storage
+    storage_gas_used: u64,
+}
+
+pub fn charge_instruction(&mut self, cost: u64) -> Result<()> {
+    if self.remaining_gas < cost {
+        return Err(ExecutionError::InsufficientGas);
+    }
+    self.remaining_gas -= cost;
+    self.computation_gas_used += cost;
+    Ok(())
+}
+```
+
+### Bucketized gas charging
+
+To reduce overhead, gas is charged in buckets:
+
+```rust
+const GAS_BUCKET_SIZE: u64 = 1000;
+
+let mut bucket = 0;
+for instruction in instructions {
+    bucket += instruction.cost();
+    
+    if bucket >= GAS_BUCKET_SIZE {
+        self.charge_gas(bucket)?;
+        bucket = 0;
+    }
+}
+// Charge remaining
+if bucket > 0 {
+    self.charge_gas(bucket)?;
+}
+```
+
+## System transactions
+
+Some transactions don't pay gas:
+
+```rust
+pub enum TransactionKind {
+    // User transaction - pays gas
+    ProgrammableTransaction(ProgrammableTransaction),
+    
+    // System transactions - no gas
+    ChangeEpoch(ChangeEpoch),
+    ConsensusCommitPrologue(ConsensusCommitPrologue),
+    // ...
+}
+```
+
+System transactions:
+- Are generated by validators
+- Execute protocol-level operations
+- Use unmetered gas status
+
+<Warning>
+Only the system can create system transactions. User transactions always pay gas.
+</Warning>
+
+## Gas estimation
+
+Before submitting transactions, estimate gas:
+
+```rust
+// Dry run the transaction
+let effects = client.dry_run_transaction(transaction).await?;
+
+// Get gas used
+let gas_used = effects.gas_used();
+let computation = gas_used.computation_cost;
+let storage = gas_used.storage_cost;
+let rebate = gas_used.storage_rebate;
+
+// Calculate net cost
+let net_cost = computation + storage - rebate;
+
+// Set budget with buffer
+let gas_budget = net_cost * 12 / 10; // 20% buffer
+```
+
+## Gas optimization techniques
+
+### Minimize storage
+
+```move
+// Bad: stores large vector
+public struct LargeRegistry has key {
+    id: UID,
+    items: vector<Item>, // grows unbounded
+}
+
+// Good: use dynamic fields
+public struct Registry has key {
+    id: UID,
+    count: u64,
+}
+// Store items separately:
+// dynamic_field::add(&mut registry.id, key, item);
+```
+
+### Batch operations
+
+```move
+// Bad: multiple transactions
+transaction1: process_item(item1);
+transaction2: process_item(item2);
+transaction3: process_item(item3);
+
+// Good: single programmable transaction
+public fun process_batch(items: vector<Item>) {
+    let mut i = 0;
+    while (i < vector::length(&items)) {
+        process_item(*vector::borrow(&items, i));
+        i = i + 1;
+    }
+}
+```
+
+### Avoid expensive operations
+
+```move
+// Expensive: nested loops
+public fun find_pairs(items: &vector<Item>): vector<(Item, Item)> {
+    let mut pairs = vector::empty();
+    let mut i = 0;
+    while (i < vector::length(items)) {
+        let mut j = i + 1;
+        while (j < vector::length(items)) {
+            // O(n²) complexity
+            vector::push_back(&mut pairs, (*vector::borrow(items, i), *vector::borrow(items, j)));
+            j = j + 1;
+        };
+        i = i + 1;
+    };
+    pairs
+}
+
+// Better: use efficient data structures
+public fun find_pairs_optimized(items: &vector<Item>): vector<(Item, Item)> {
+    // Use indexing or other O(n) approach
+}
+```
+
+### Reuse computations
+
+```move
+// Bad: repeated expensive calls
+public fun process(obj: &MyObject) {
+    if (expensive_check(obj)) {
+        do_something();
+    };
+    if (expensive_check(obj)) { // computed again!
+        do_something_else();
+    }
+}
+
+// Good: cache result
+public fun process(obj: &MyObject) {
+    let check = expensive_check(obj);
+    if (check) {
+        do_something();
+    };
+    if (check) {
+        do_something_else();
+    }
+}
+```
+
+## Gas costs breakdown example
+
+Example transaction costs:
+
+```
+Transaction: Transfer 100 IOTA to recipient
+
+Computation costs:
+  - Signature verification:      100 gas
+  - Load gas coin object:        200 gas
+  - Execute transfer logic:      500 gas
+  - Update object versions:      200 gas
+  Total computation:           1,000 gas
+  
+Storage costs:
+  - Modified coin object:     20,000 bytes × 100 = 2,000,000 MIST
+  
+Storage rebate:
+  - Previous version:         20,000 bytes × 100 = 2,000,000 MIST
+  - Non-refundable (1%):                         -   20,000 MIST
+  - Net rebate:                                    1,980,000 MIST
+  
+Gas summary:
+  - Computation (1,000 × 1000):      1,000,000 MIST
+  - Storage cost:                    2,000,000 MIST
+  - Storage rebate:                 -1,980,000 MIST
+  - Non-refundable fee:                 20,000 MIST
+  Total cost:                        1,020,000 MIST (0.00102 IOTA)
+```
+
+## Related topics
+
+<CardGroup cols={2}>
+  <Card title="Transactions" icon="exchange-alt" href="/concepts/transactions">
+    Learn about transaction structure and execution
+  </Card>
+  <Card title="Objects and ownership" icon="box" href="/concepts/objects-and-ownership">
+    Understand storage costs for different object types
+  </Card>
+  <Card title="Move language" icon="code" href="/concepts/move-language">
+    Write gas-efficient Move code
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/concepts/architecture">
+    Overview of IOTA's execution and storage architecture
+  </Card>
+</CardGroup>

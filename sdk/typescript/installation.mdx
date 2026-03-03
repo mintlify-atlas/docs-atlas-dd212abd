@@ -1,0 +1,117 @@
+---
+title: Installation
+description: Install and set up the IOTA TypeScript SDK in your project
+---
+
+The IOTA TypeScript SDK (`@iota/iota-sdk`) is designed for interacting with the IOTA Rebased protocol. It provides utility classes and functions for applications to sign transactions and interact with the IOTA network.
+
+<Warning>
+The SDK and RPC API are still being iterated before TestNet. Expect frequent breaking changes in the short-term. The API will stabilize after the upcoming TestNet launch.
+</Warning>
+
+## Package Manager Installation
+
+Install the SDK using your preferred package manager:
+
+<CodeGroup>
+```bash npm
+npm install @iota/iota-sdk
+```
+
+```bash yarn
+yarn add @iota/iota-sdk
+```
+
+```bash pnpm
+pnpm add @iota/iota-sdk
+```
+</CodeGroup>
+
+## Version Requirements
+
+The SDK requires:
+- **Node.js**: version 24 or higher
+- **Package Manager**: pnpm version 9.6.0 to 9.15.9 (for monorepo development)
+
+## Release Cycle
+
+The SDK is published to [npm registry](https://www.npmjs.com/package/@iota/iota-sdk) with a bi-weekly release cycle that syncs with:
+- Devnet validators
+- [RPC Server](https://docs.iota.org/iota-api-ref) updates
+
+## Working with Different Networks
+
+### Devnet (Stable)
+
+For production-ready development against Devnet:
+
+```bash
+npm install @iota/iota-sdk
+```
+
+### Localnet (Experimental)
+
+For local development with the latest changes from `main` branch:
+
+```bash
+npm install @iota/iota-sdk@experimental
+```
+
+<Note>
+The `experimental` tag contains the latest changes and may be out of sync with the stable release. Use this when developing against a local network.
+</Note>
+
+## Verifying Installation
+
+After installation, verify the SDK is working:
+
+```typescript
+import { IotaClient, getFullnodeUrl } from '@iota/iota-sdk/client';
+
+// Create a client instance
+const client = new IotaClient({ url: getFullnodeUrl('devnet') });
+
+console.log('IOTA SDK installed successfully!');
+```
+
+## Available Exports
+
+The SDK provides modular exports for different functionality:
+
+- `@iota/iota-sdk/client` - IOTA client and network utilities
+- `@iota/iota-sdk/transactions` - Transaction building
+- `@iota/iota-sdk/keypairs/ed25519` - Ed25519 keypairs
+- `@iota/iota-sdk/keypairs/secp256k1` - Secp256k1 keypairs
+- `@iota/iota-sdk/keypairs/secp256r1` - Secp256r1 keypairs
+- `@iota/iota-sdk/multisig` - Multisig functionality
+- `@iota/iota-sdk/faucet` - Faucet integration
+- `@iota/iota-sdk/graphql` - GraphQL transport
+- `@iota/iota-sdk/bcs` - Binary Canonical Serialization
+- `@iota/iota-sdk/utils` - Utility functions
+- `@iota/iota-sdk/verify` - Signature verification
+
+## Building from Source
+
+To build the SDK locally:
+
+```bash
+# Install pnpm if not already installed
+npm install -g pnpm
+
+# Install dependencies
+pnpm install
+
+# Build the TypeScript SDK
+pnpm run build
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="./quickstart">
+    Get started with a working example
+  </Card>
+  <Card title="Client Setup" icon="gear" href="./client-setup">
+    Configure the IotaClient for different networks
+  </Card>
+</CardGroup>

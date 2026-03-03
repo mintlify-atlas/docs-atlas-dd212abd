@@ -1,0 +1,396 @@
+---
+title: Monitoring and Metrics
+description: Monitor IOTA node performance and health using Prometheus metrics and observability tools.
+---
+
+IOTA nodes expose comprehensive metrics for monitoring performance, health, and network participation. This guide covers setting up monitoring infrastructure and understanding key metrics.
+
+## Metrics Endpoint
+
+Nodes expose Prometheus-compatible metrics on the configured metrics address:
+
+```yaml
+# In node.yaml
+metrics-address: "0.0.0.0:9184"
+```
+
+Access metrics at: `http://your-node:9184/metrics`
+
+## Quick Health Check
+
+Verify your node is exposing metrics:
+
+```bash
+curl http://localhost:9184/metrics
+```
+
+You should see Prometheus-formatted metrics output.
+
+## Prometheus Setup
+
+<Steps>
+  <Step title="Install Prometheus">
+    ```bash
+    # Using Docker
+    docker pull prom/prometheus:latest
+    
+    # Or download binary from prometheus.io
+    wget https://github.com/prometheus/prometheus/releases/download/v2.45.0/prometheus-2.45.0.linux-amd64.tar.gz
+    ```
+  </Step>
+
+  <Step title="Configure Prometheus">
+    Create `prometheus.yml`:
+    
+    ```yaml
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    
+    scrape_configs:
+      - job_name: 'iota-node'
+        static_configs:
+          - targets: ['localhost:9184']
+            labels:
+              instance: 'node-1'
+              chain: 'mainnet'
+    ```
+  </Step>
+
+  <Step title="Start Prometheus">
+    ```bash
+    docker run -d \
+      --name prometheus \
+      -p 9090:9090 \
+      -v $PWD/prometheus.yml:/etc/prometheus/prometheus.yml \
+      prom/prometheus:latest
+    ```
+  </Step>
+
+  <Step title="Verify data collection">
+    Access Prometheus UI at `http://localhost:9090` and query:
+    ```promql
+    uptime
+    ```
+  </Step>
+</Steps>
+
+## Metrics Push Service
+
+For centralized monitoring, configure metrics push:
+
+```yaml
+metrics:
+  # Push interval in seconds (default: 60)
+  push-interval-seconds: 60
+  
+  # Remote push endpoint
+  push-url: "https://metrics-gateway.example.com/push"
+```
+
+The node will periodically push metrics to the configured endpoint using authenticated requests.
+
+## Key Metrics Reference
+
+### Node Uptime and Version
+
+```promql
+# Node uptime in seconds
+uptime
+
+# Labels include:
+# - process: "validator" or "fullnode"
+# - version: binary version
+# - chain_identifier: network identifier
+# - os_version: operating system
+# - is_docker: whether running in Docker
+```
+
+### Task and Future Monitoring
+
+```promql
+# Number of running tasks
+monitored_tasks{callsite="..."}
+
+# Number of pending futures
+monitored_futures{callsite="..."}
+
+# Active duration of futures in nanoseconds
+monitored_future_active_duration_ns{name="..."}
+```
+
+### Channel Metrics
+
+```promql
+# Items in flight in channels
+monitored_channel_inflight{name="..."}
+
+# Items sent through channels
+monitored_channel_sent{name="..."}
+
+# Items received from channels
+monitored_channel_received{name="..."}
+```
+
+### Scope Monitoring
+
+```promql
+# Number of scope entrances
+monitored_scope_entrance{name="..."}
+
+# Total scope iterations
+monitored_scope_iterations{name="..."}
+
+# Scope duration in nanoseconds
+monitored_scope_duration_ns{name="..."}
+```
+
+### Thread Stall Detection
+
+```promql
+# Thread stall duration histogram
+thread_stall_duration_sec_bucket
+thread_stall_duration_sec_sum
+thread_stall_duration_sec_count
+```
+
+### System Invariant Violations
+
+```promql
+# Count of system invariant violations
+system_invariant_violations{name="..."}
+```
+
+<Warning>
+  Any non-zero value for `system_invariant_violations` indicates a serious issue that requires immediate investigation.
+</Warning>
+
+### gRPC API Metrics
+
+```promql
+# In-flight gRPC requests
+inflight_grpc{path="..."}
+
+# Total gRPC requests
+grpc_requests{path="...", status="..."}
+
+# gRPC request latency histogram
+grpc_request_latency_bucket{path="..."}
+grpc_request_latency_sum{path="..."}
+grpc_request_latency_count{path="..."}
+```
+
+### zkLogin Metrics
+
+```promql
+# JWK requests by provider
+jwk_requests{provider="..."}
+
+# JWK request errors
+jwk_request_errors{provider="..."}
+
+# Total JWKs
+total_jwks{provider="..."}
+
+# Invalid JWKs
+invalid_jwks{provider="..."}
+
+# Unique JWKs
+unique_jwks{provider="..."}
+```
+
+## Hardware Metrics
+
+The `iota-metrics` crate includes hardware monitoring capabilities:
+
+```bash
+# CPU usage, memory, disk I/O
+# Network interface statistics
+# System load averages
+```
+
+These metrics are automatically collected when enabled in the node configuration.
+
+## Grafana Dashboard
+
+<Steps>
+  <Step title="Install Grafana">
+    ```bash
+    docker run -d \
+      --name grafana \
+      -p 3000:3000 \
+      grafana/grafana:latest
+    ```
+  </Step>
+
+  <Step title="Add Prometheus data source">
+    1. Access Grafana at `http://localhost:3000` (default credentials: admin/admin)
+    2. Go to Configuration > Data Sources
+    3. Add Prometheus with URL `http://prometheus:9090`
+  </Step>
+
+  <Step title="Create dashboards">
+    Create custom dashboards tracking:
+    - Node uptime and version
+    - gRPC request rates and latency
+    - Channel queue depths
+    - Thread stall events
+    - System resource utilization
+  </Step>
+</Steps>
+
+## Example Prometheus Queries
+
+### Request Rate (QPS)
+
+```promql
+# gRPC requests per second by path
+rate(grpc_requests[5m])
+```
+
+### Error Rate
+
+```promql
+# gRPC error rate by status code
+rate(grpc_requests{status!="Ok"}[5m])
+```
+
+### Latency Percentiles
+
+```promql
+# 95th percentile gRPC latency
+histogram_quantile(0.95, 
+  rate(grpc_request_latency_bucket[5m])
+)
+
+# 99th percentile
+histogram_quantile(0.99,
+  rate(grpc_request_latency_bucket[5m])
+)
+```
+
+### Channel Backlog
+
+```promql
+# Items waiting in channels
+monitored_channel_inflight
+
+# Channel throughput
+rate(monitored_channel_sent[5m])
+```
+
+### Thread Health
+
+```promql
+# Thread stalls per minute
+rate(thread_stall_duration_sec_count[1m]) * 60
+
+# Average stall duration
+rate(thread_stall_duration_sec_sum[5m]) / 
+rate(thread_stall_duration_sec_count[5m])
+```
+
+## Alerting Rules
+
+Create Prometheus alerting rules for critical conditions:
+
+```yaml
+groups:
+  - name: iota_node_alerts
+    interval: 30s
+    rules:
+      - alert: NodeDown
+        expr: up{job="iota-node"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "IOTA node is down"
+      
+      - alert: HighGrpcErrorRate
+        expr: |
+          rate(grpc_requests{status!="Ok"}[5m]) / 
+          rate(grpc_requests[5m]) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High gRPC error rate detected"
+      
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(grpc_request_latency_bucket[5m])
+          ) > 5
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High request latency (p95 > 5s)"
+      
+      - alert: ThreadStalls
+        expr: |
+          rate(thread_stall_duration_sec_count[5m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Frequent thread stalls detected"
+      
+      - alert: InvariantViolation
+        expr: |
+          increase(system_invariant_violations[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "System invariant violation detected"
+```
+
+## Admin Interface
+
+The admin interface provides runtime control and diagnostics:
+
+```yaml
+# Default: 127.0.0.1:1337 (localhost only)
+admin-interface-address: "127.0.0.1:1337"
+```
+
+<Warning>
+  The admin interface should only be accessible from localhost or via secure channels. Never expose it publicly.
+</Warning>
+
+## Logging Configuration
+
+The admin interface allows dynamic tracing and logging configuration:
+
+```bash
+# Access admin interface
+curl http://localhost:1337/admin/logging
+```
+
+## Network Metrics
+
+Monitor P2P network health:
+
+```promql
+# Network message metrics
+# Peer connection counts
+# State sync progress
+# Checkpoint download rates
+```
+
+These metrics are exposed through the P2P subsystem's metrics integration.
+
+## Best Practices
+
+1. **Set up alerting**: Don't rely on manual monitoring - configure alerts for critical conditions
+2. **Monitor trends**: Track metrics over time to identify degradation before it becomes critical
+3. **Correlate metrics**: Look at multiple metrics together to diagnose issues
+4. **Regular review**: Periodically review dashboards and adjust thresholds
+5. **Retention**: Configure appropriate metrics retention based on your needs
+6. **Security**: Protect metrics endpoints with authentication in production
+
+## Next Steps
+
+- [Troubleshoot common issues](/nodes/troubleshooting) using metrics data
+- Learn about [node configuration](/nodes/configuration) options

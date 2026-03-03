@@ -1,0 +1,362 @@
+---
+title: Balance Module
+description: Low-level balance operations for fungible tokens in the IOTA Move Framework
+---
+
+# Balance Module
+
+The `iota::balance` module provides a storable handler for balances without the overhead of object wrapping. It's the foundation of the `Coin` module and can be used to implement custom token logic.
+
+Source: `crates/iota-framework/packages/iota-framework/sources/balance.move`
+
+## Core Types
+
+### Balance
+
+A storable balance that doesn't need the `key` ability:
+
+```move
+public struct Balance<phantom T> has store {
+    value: u64,
+}
+```
+
+The `Balance` type:
+- Only has the `store` ability (not `key`)
+- Can be stored inside other structs
+- More gas-efficient than `Coin` for internal accounting
+
+### Supply
+
+Tracks the total supply of a type:
+
+```move
+public struct Supply<phantom T> has store {
+    value: u64,
+}
+```
+
+## Creating Balances
+
+### create_supply
+
+Create a new supply for a type:
+
+<ParamField path="witness" type="T" required>
+  A witness of type T with drop ability
+</ParamField>
+
+```move
+public fun create_supply<T: drop>(_: T): Supply<T>
+```
+
+Example:
+```move
+public struct MY_TOKEN has drop {}
+
+fun init(witness: MY_TOKEN, ctx: &mut TxContext) {
+    let supply = balance::create_supply(witness);
+    // Use supply for minting/burning
+}
+```
+
+### zero
+
+Create a zero balance:
+
+```move
+public fun zero<T>(): Balance<T>
+```
+
+Example:
+```move
+public struct Wallet has key {
+    id: UID,
+    balance: Balance<MY_TOKEN>,
+}
+
+public fun create_wallet(ctx: &mut TxContext) {
+    let wallet = Wallet {
+        id: object::new(ctx),
+        balance: balance::zero(),
+    };
+    transfer::transfer(wallet, ctx.sender());
+}
+```
+
+## Balance Operations
+
+### value
+
+Get the amount in a balance:
+
+<ParamField path="self" type="&Balance<T>" required>
+  Balance to query
+</ParamField>
+
+```move
+public fun value<T>(self: &Balance<T>): u64
+```
+
+Example:
+```move
+let amount = balance.value();
+```
+
+### join
+
+Add one balance to another:
+
+<ParamField path="self" type="&mut Balance<T>" required>
+  Balance to add to
+</ParamField>
+
+<ParamField path="balance" type="Balance<T>" required>
+  Balance to add from (will be destroyed)
+</ParamField>
+
+```move
+public fun join<T>(self: &mut Balance<T>, balance: Balance<T>): u64
+```
+
+Example:
+```move
+let mut balance1 = balance::zero<MY_TOKEN>();
+let balance2 = balance::zero<MY_TOKEN>();
+balance1.join(balance2);  // balance2 is consumed
+```
+
+### split
+
+Split a balance into two:
+
+<ParamField path="self" type="&mut Balance<T>" required>
+  Balance to split from
+</ParamField>
+
+<ParamField path="value" type="u64" required>
+  Amount to split off
+</ParamField>
+
+```move
+public fun split<T>(self: &mut Balance<T>, value: u64): Balance<T>
+```
+
+Example:
+```move
+let mut balance = /* get balance */;
+let split_balance = balance.split(100);  // Split off 100 units
+```
+
+### withdraw_all
+
+Withdraw the entire balance:
+
+<ParamField path="self" type="&mut Balance<T>" required>
+  Balance to withdraw from
+</ParamField>
+
+```move
+public fun withdraw_all<T>(self: &mut Balance<T>): Balance<T>
+```
+
+Example:
+```move
+let withdrawn = balance.withdraw_all();
+assert!(balance.value() == 0, 0);
+```
+
+### destroy_zero
+
+Destroy a balance with zero value:
+
+<ParamField path="balance" type="Balance<T>" required>
+  Balance to destroy (must have value 0)
+</ParamField>
+
+```move
+public fun destroy_zero<T>(balance: Balance<T>)
+```
+
+Aborts with `ENonZero` if the balance is not zero.
+
+## Supply Operations
+
+### supply_value
+
+Get the current supply value:
+
+<ParamField path="supply" type="&Supply<T>" required>
+  Supply to query
+</ParamField>
+
+```move
+public fun supply_value<T>(supply: &Supply<T>): u64
+```
+
+### increase_supply
+
+Increase supply and create a new balance:
+
+<ParamField path="self" type="&mut Supply<T>" required>
+  Supply to increase
+</ParamField>
+
+<ParamField path="value" type="u64" required>
+  Amount to mint
+</ParamField>
+
+```move
+public fun increase_supply<T>(self: &mut Supply<T>, value: u64): Balance<T>
+```
+
+Example:
+```move
+public struct Treasury has key {
+    id: UID,
+    supply: Supply<MY_TOKEN>,
+}
+
+public fun mint(treasury: &mut Treasury, amount: u64): Balance<MY_TOKEN> {
+    treasury.supply.increase_supply(amount)
+}
+```
+
+### decrease_supply
+
+Burn a balance and decrease supply:
+
+<ParamField path="self" type="&mut Supply<T>" required>
+  Supply to decrease
+</ParamField>
+
+<ParamField path="balance" type="Balance<T>" required>
+  Balance to burn
+</ParamField>
+
+```move
+public fun decrease_supply<T>(self: &mut Supply<T>, balance: Balance<T>): u64
+```
+
+Example:
+```move
+public fun burn(treasury: &mut Treasury, balance: Balance<MY_TOKEN>): u64 {
+    treasury.supply.decrease_supply(balance)
+}
+```
+
+## Extension Functions
+
+The module provides a convenient extension function:
+
+```move
+// Allows calling balance.into_coin(ctx) instead of coin::from_balance(balance, ctx)
+public use fun iota::coin::from_balance as Balance.into_coin;
+```
+
+## Complete Example
+
+```move
+module example::loyalty_points {
+    use iota::balance::{Self, Balance, Supply};
+    use iota::object::{Self, UID};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    public struct LOYALTY_POINTS has drop {}
+
+    public struct PointsStore has key {
+        id: UID,
+        supply: Supply<LOYALTY_POINTS>,
+    }
+
+    public struct MemberCard has key {
+        id: UID,
+        points: Balance<LOYALTY_POINTS>,
+    }
+
+    fun init(witness: LOYALTY_POINTS, ctx: &mut TxContext) {
+        let store = PointsStore {
+            id: object::new(ctx),
+            supply: balance::create_supply(witness),
+        };
+        transfer::share_object(store);
+    }
+
+    public fun create_card(ctx: &mut TxContext) {
+        let card = MemberCard {
+            id: object::new(ctx),
+            points: balance::zero(),
+        };
+        transfer::transfer(card, ctx.sender());
+    }
+
+    public fun reward_points(
+        store: &mut PointsStore,
+        card: &mut MemberCard,
+        amount: u64,
+    ) {
+        let new_points = store.supply.increase_supply(amount);
+        card.points.join(new_points);
+    }
+
+    public fun spend_points(
+        store: &mut PointsStore,
+        card: &mut MemberCard,
+        amount: u64,
+    ) {
+        let spent = card.points.split(amount);
+        store.supply.decrease_supply(spent);
+    }
+
+    public fun get_points(card: &MemberCard): u64 {
+        card.points.value()
+    }
+
+    public fun total_supply(store: &PointsStore): u64 {
+        balance::supply_value(&store.supply)
+    }
+}
+```
+
+## System Functions
+
+The module includes special system-only functions for IOTA token management:
+
+```move
+// Create staking rewards (system use only)
+fun create_staking_rewards<T>(value: u64, ctx: &TxContext): Balance<T>
+
+// Destroy storage rebates (system use only)
+fun destroy_storage_rebates<T>(self: Balance<T>, ctx: &TxContext)
+
+// Destroy genesis supply (genesis use only)
+fun destroy_genesis_supply<T>(self: Balance<T>, ctx: &TxContext)
+```
+
+These functions are only callable by the system address `@0x0`.
+
+## Error Codes
+
+```move
+const ENonZero: u64 = 0;  // Trying to destroy a non-zero balance
+const EOverflow: u64 = 1;  // Overflow on supply operations
+const ENotEnough: u64 = 2;  // Insufficient balance for withdrawal
+const ENotSystemAddress: u64 = 3;  // Sender is not @0x0
+const ENotGenesisEpoch: u64 = 4;  // Epoch is not 0
+const ENotIOTA: u64 = 5;  // System operation on non-IOTA coin
+```
+
+## Best Practices
+
+1. **Use Balance for internal accounting**: When you need to track balances within objects without wrapping them in `Coin`
+
+2. **Always check for zero before destroying**: Call `destroy_zero` only when the balance is confirmed to be zero
+
+3. **Handle supply carefully**: Keep supply tracking consistent with actual balances in circulation
+
+4. **Use with Coin for transfers**: Convert to `Coin` when you need to transfer balances between addresses:
+```move
+let coin = balance.into_coin(ctx);
+transfer::public_transfer(coin, recipient);
+```

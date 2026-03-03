@@ -1,0 +1,584 @@
+---
+title: REST API Endpoints
+description: Complete list of IOTA REST API endpoints
+---
+
+This page documents all available REST API endpoints for the IOTA blockchain.
+
+## Node Information
+
+### GET /
+
+Get node information including software version and chain ID.
+
+**Stability:** Stable
+
+```bash cURL
+curl https://api.iota.io/api/v1/
+```
+
+**Response:**
+
+```json
+{
+  "name": "IOTA Node API",
+  "version": "1.0.0",
+  "chainId": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+}
+```
+
+### GET /health
+
+Health check endpoint.
+
+**Stability:** Stable
+
+```bash cURL
+curl https://api.iota.io/api/v1/health
+```
+
+**Response:**
+
+```json
+{
+  "status": "ok"
+}
+```
+
+## Checkpoints
+
+### GET /checkpoints
+
+List checkpoints with pagination.
+
+**Stability:** Stable
+
+<ParamField query="limit" type="u32" default="50">
+  Page size limit (max: 100)
+</ParamField>
+
+<ParamField query="start" type="u64">
+  Starting checkpoint sequence number. Defaults to latest if not specified.
+</ParamField>
+
+<ParamField query="direction" type="Direction" default="descending">
+  Pagination direction: `ascending` or `descending`
+</ParamField>
+
+<ParamField query="contents" type="boolean" default="false">
+  Include checkpoint contents
+</ParamField>
+
+```bash cURL
+curl "https://api.iota.io/api/v1/checkpoints?limit=10&direction=ascending"
+```
+
+**Response:**
+
+<ResponseField name="checkpoint" type="CheckpointSummary" required>
+  Checkpoint summary data
+  
+  <Expandable title="CheckpointSummary">
+    <ResponseField name="sequenceNumber" type="u64">
+      Checkpoint sequence number
+    </ResponseField>
+    <ResponseField name="digest" type="String">
+      Base58-encoded checkpoint digest
+    </ResponseField>
+    <ResponseField name="timestamp" type="DateTime">
+      Timestamp when checkpoint was created
+    </ResponseField>
+    <ResponseField name="networkTotalTransactions" type="u64">
+      Total transactions in network up to this checkpoint
+    </ResponseField>
+    <ResponseField name="previousCheckpointDigest" type="String">
+      Digest of previous checkpoint
+    </ResponseField>
+    <ResponseField name="epochId" type="u64">
+      Epoch ID
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="signature" type="ValidatorAggregatedSignature" required>
+  Aggregated validator signatures
+</ResponseField>
+
+<ResponseField name="contents" type="CheckpointContents">
+  Checkpoint contents (if requested)
+</ResponseField>
+
+**Headers:**
+- `X-Iota-Cursor`: Cursor for next page
+
+### GET /checkpoints/{checkpoint}
+
+Get a specific checkpoint by sequence number or digest.
+
+**Stability:** Stable
+
+<ParamField path="checkpoint" type="CheckpointId" required>
+  Checkpoint sequence number (e.g., "1000") or digest (Base58-encoded)
+</ParamField>
+
+<ParamField query="contents" type="boolean" default="false">
+  Include checkpoint contents
+</ParamField>
+
+```bash cURL
+curl "https://api.iota.io/api/v1/checkpoints/1000?contents=true"
+```
+
+**Status Codes:**
+- `200 OK` - Checkpoint found
+- `404 Not Found` - Checkpoint doesn't exist
+- `410 Gone` - Checkpoint has been pruned
+
+### GET /checkpoints/{checkpoint}/full
+
+Get full checkpoint data including all transactions, effects, events, and objects.
+
+**Stability:** Unstable
+
+**Content-Type:** Only supports `application/bcs`
+
+<ParamField path="checkpoint" type="CheckpointId" required>
+  Checkpoint sequence number or digest
+</ParamField>
+
+```bash cURL
+curl -H "Accept: application/bcs" \
+  https://api.iota.io/api/v1/checkpoints/1000/full \
+  --output checkpoint_1000.bcs
+```
+
+**Status Codes:**
+- `200 OK` - Full checkpoint data returned (BCS format)
+- `400 Bad Request` - Invalid accept type
+- `404 Not Found` - Checkpoint doesn't exist
+- `410 Gone` - Checkpoint objects have been pruned
+
+### GET /checkpoints/full
+
+List full checkpoints with all associated data.
+
+**Stability:** Unstable
+
+**Content-Type:** Only supports `application/bcs`
+
+<ParamField query="limit" type="u32" default="5">
+  Page size (max: 10)
+</ParamField>
+
+<ParamField query="start" type="u64">
+  Starting checkpoint sequence number
+</ParamField>
+
+<ParamField query="direction" type="Direction" default="descending">
+  Pagination direction
+</ParamField>
+
+```bash cURL
+curl -H "Accept: application/bcs" \
+  "https://api.iota.io/api/v1/checkpoints/full?limit=5"
+```
+
+## Transactions
+
+### GET /transactions/{transaction}
+
+Get a transaction by its digest.
+
+**Stability:** Unstable
+
+<ParamField path="transaction" type="Digest" required>
+  Base58-encoded transaction digest
+</ParamField>
+
+```bash cURL
+curl https://api.iota.io/api/v1/transactions/Dv5XRBjWvZTwiHVrhUetvDTgxyM8xVMb6P8pCAZv51tq
+```
+
+**Response:**
+
+<ResponseField name="digest" type="Digest" required>
+  Transaction digest
+</ResponseField>
+
+<ResponseField name="transaction" type="Transaction" required>
+  Transaction data
+</ResponseField>
+
+<ResponseField name="signatures" type="Vec<UserSignature>" required>
+  User signatures
+</ResponseField>
+
+<ResponseField name="effects" type="TransactionEffects" required>
+  Transaction effects
+</ResponseField>
+
+<ResponseField name="events" type="TransactionEvents">
+  Events emitted by the transaction
+</ResponseField>
+
+<ResponseField name="checkpoint" type="u64">
+  Checkpoint sequence number where transaction was finalized
+</ResponseField>
+
+<ResponseField name="timestamp_ms" type="u64">
+  Transaction timestamp in milliseconds
+</ResponseField>
+
+### GET /transactions
+
+List transactions with pagination.
+
+**Stability:** Unstable
+
+<ParamField query="limit" type="u32" default="50">
+  Page size (max: 100)
+</ParamField>
+
+<ParamField query="start" type="String">
+  Transaction cursor in format `{checkpoint}.{index}`. Defaults to latest.
+</ParamField>
+
+<ParamField query="direction" type="Direction" default="descending">
+  Pagination direction
+</ParamField>
+
+```bash cURL
+curl "https://api.iota.io/api/v1/transactions?limit=20"
+```
+
+**Headers:**
+- `X-Iota-Cursor`: Transaction cursor for next page (format: `{checkpoint}.{index}`)
+
+### POST /transactions
+
+Execute a signed transaction.
+
+**Stability:** Unstable
+
+<ParamField body="txBytes" type="Base64" required>
+  BCS-encoded transaction bytes
+</ParamField>
+
+<ParamField body="signatures" type="Vec<Base64>" required>
+  Transaction signatures
+</ParamField>
+
+<ParamField query="effects" type="boolean" default="true">
+  Wait for and return transaction effects
+</ParamField>
+
+<ParamField query="events" type="boolean" default="false">
+  Include transaction events
+</ParamField>
+
+<ParamField query="finality" type="EffectsFinality" default="certified">
+  Finality level: `certified` or `executed`
+</ParamField>
+
+```bash cURL
+curl -X POST https://api.iota.io/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "txBytes": "AAACACCNu...",
+    "signatures": ["ANjGTW3..."]
+  }'
+```
+
+**Response:** Same as GET /transactions/{transaction}
+
+### POST /transactions/simulate
+
+Simulate transaction execution without committing.
+
+**Stability:** Unstable
+
+<ParamField body="txBytes" type="Base64" required>
+  BCS-encoded transaction bytes
+</ParamField>
+
+<ParamField query="effects" type="boolean" default="true">
+  Include transaction effects
+</ParamField>
+
+<ParamField query="events" type="boolean" default="false">
+  Include transaction events
+</ParamField>
+
+```bash cURL
+curl -X POST "https://api.iota.io/api/v1/transactions/simulate?effects=true" \
+  -H "Content-Type: application/json" \
+  -d '{"txBytes": "AAACACCNu..."}'
+```
+
+### POST /transactions/resolve
+
+Resolve unresolved transaction data into a complete transaction.
+
+**Stability:** Unstable
+
+```bash cURL
+curl -X POST https://api.iota.io/api/v1/transactions/resolve \
+  -H "Content-Type: application/json" \
+  -d '{...}'
+```
+
+## Objects
+
+### GET /objects/{object_id}
+
+Get an object by its ID.
+
+**Stability:** Unstable
+
+<ParamField path="object_id" type="ObjectId" required>
+  Hex-encoded object ID (e.g., "0x5")
+</ParamField>
+
+```bash cURL
+curl https://api.iota.io/api/v1/objects/0x5
+```
+
+### GET /objects/{object_id}/version/{version}
+
+Get a specific version of an object.
+
+**Stability:** Unstable
+
+<ParamField path="object_id" type="ObjectId" required>
+  Object ID
+</ParamField>
+
+<ParamField path="version" type="u64" required>
+  Object version
+</ParamField>
+
+```bash cURL
+curl https://api.iota.io/api/v1/objects/0x5/version/42
+```
+
+### GET /objects/{object_id}/dynamic-fields
+
+List dynamic fields of an object.
+
+**Stability:** Unstable
+
+<ParamField path="object_id" type="ObjectId" required>
+  Parent object ID
+</ParamField>
+
+<ParamField query="limit" type="u32" default="50">
+  Page size
+</ParamField>
+
+<ParamField query="start" type="ObjectId">
+  Starting cursor
+</ParamField>
+
+```bash cURL
+curl "https://api.iota.io/api/v1/objects/0x5/dynamic-fields?limit=10"
+```
+
+## Accounts
+
+### GET /accounts/{account}/objects
+
+List objects owned by an account.
+
+**Stability:** Unstable
+
+<ParamField path="account" type="Address" required>
+  Account address
+</ParamField>
+
+<ParamField query="limit" type="u32" default="50">
+  Page size (max: 100)
+</ParamField>
+
+<ParamField query="start" type="ObjectId">
+  Starting object ID
+</ParamField>
+
+```bash cURL
+curl "https://api.iota.io/api/v1/accounts/0x479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747/objects"
+```
+
+**Response:**
+
+<ResponseField name="owner" type="Address">
+  Owner address
+</ResponseField>
+
+<ResponseField name="object_id" type="ObjectId">
+  Object ID
+</ResponseField>
+
+<ResponseField name="version" type="u64">
+  Object version
+</ResponseField>
+
+<ResponseField name="type" type="StructTag">
+  Object type
+</ResponseField>
+
+## System
+
+### GET /system/state
+
+Get the current system state summary.
+
+**Stability:** Unstable
+
+```bash cURL
+curl https://api.iota.io/api/v1/system/state
+```
+
+### GET /system/protocol
+
+Get the current protocol configuration.
+
+**Stability:** Unstable
+
+```bash cURL
+curl https://api.iota.io/api/v1/system/protocol
+```
+
+### GET /system/protocol/{version}
+
+Get a specific protocol version configuration.
+
+**Stability:** Unstable
+
+<ParamField path="version" type="u64" required>
+  Protocol version number
+</ParamField>
+
+```bash cURL
+curl https://api.iota.io/api/v1/system/protocol/50
+```
+
+### GET /system/gas
+
+Get gas information including reference gas price.
+
+**Stability:** Unstable
+
+```bash cURL
+curl https://api.iota.io/api/v1/system/gas
+```
+
+**Response:**
+
+<ResponseField name="referenceGasPrice" type="u64">
+  Reference gas price in NANOS
+</ResponseField>
+
+## Committee
+
+### GET /committee
+
+Get the latest committee information.
+
+**Stability:** Unstable
+
+```bash cURL
+curl https://api.iota.io/api/v1/committee
+```
+
+### GET /committee/{epoch}
+
+Get committee information for a specific epoch.
+
+**Stability:** Unstable
+
+<ParamField path="epoch" type="u64" required>
+  Epoch number
+</ParamField>
+
+```bash cURL
+curl https://api.iota.io/api/v1/committee/100
+```
+
+## Coins
+
+### GET /coins/{coin_type}
+
+Get coin metadata for a specific coin type.
+
+**Stability:** Unstable
+
+<ParamField path="coin_type" type="String" required>
+  Coin type (e.g., "0x2::iota::IOTA")
+</ParamField>
+
+```bash cURL
+curl https://api.iota.io/api/v1/coins/0x2::iota::IOTA
+```
+
+**Response:**
+
+<ResponseField name="decimals" type="u8">
+  Number of decimal places
+</ResponseField>
+
+<ResponseField name="name" type="String">
+  Coin name
+</ResponseField>
+
+<ResponseField name="symbol" type="String">
+  Coin symbol
+</ResponseField>
+
+<ResponseField name="description" type="String">
+  Coin description
+</ResponseField>
+
+<ResponseField name="iconUrl" type="String">
+  Icon URL
+</ResponseField>
+
+## Epochs
+
+### GET /epochs/{epoch}/checkpoints/last
+
+Get the last checkpoint of an epoch.
+
+**Stability:** Unstable
+
+<ParamField path="epoch" type="u64" required>
+  Epoch number
+</ParamField>
+
+```bash cURL
+curl https://api.iota.io/api/v1/epochs/100/checkpoints/last
+```
+
+## Response Headers
+
+All responses include these headers:
+
+- `X-Iota-Chain-Id` - Chain identifier
+- `X-Iota-Software-Version` - Node software version
+- `X-Iota-Cursor` - Pagination cursor (for paginated endpoints)
+- `Content-Type` - Response content type (JSON or BCS)
+
+## Error Responses
+
+Error responses include a JSON object with an error message:
+
+```json
+{
+  "error": "Description of the error"
+}
+```
+
+Common HTTP status codes:
+
+- `400 Bad Request` - Invalid request parameters
+- `404 Not Found` - Resource not found
+- `410 Gone` - Resource has been pruned from the node
+- `500 Internal Server Error` - Server error

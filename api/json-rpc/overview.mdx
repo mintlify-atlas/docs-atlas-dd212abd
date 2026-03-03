@@ -1,0 +1,126 @@
+---
+title: JSON-RPC API Overview
+description: Overview of the IOTA JSON-RPC API for interacting with the IOTA blockchain
+---
+
+The IOTA JSON-RPC API provides programmatic access to the IOTA blockchain through a standard JSON-RPC 2.0 interface. The API is organized into several namespaces, each providing specific functionality.
+
+## API Namespaces
+
+The JSON-RPC API is divided into the following namespaces:
+
+### iota Namespace
+
+Core read and write operations:
+
+- **Read API** (`iota_*`) - Query transactions, objects, checkpoints, and protocol configuration
+- **Write API** (`iota_*`) - Execute transactions and call Move view functions
+
+### iotax Namespace
+
+Extended functionality:
+
+- **Coin API** (`iotax_*`) - Query coin balances, metadata, and supply information
+- **Governance API** (`iotax_*`) - Access staking, validator, and system state data
+
+## Connection Information
+
+### Mainnet
+
+```bash
+https://api.iota.io/
+```
+
+### Testnet
+
+```bash
+https://api.testnet.iota.io/
+```
+
+### Local Node
+
+```bash
+http://127.0.0.1:9000/
+```
+
+## Making Requests
+
+All JSON-RPC requests follow the standard JSON-RPC 2.0 format:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "iota_getObject",
+  "params": ["0x5"]
+}
+```
+
+### Using cURL
+
+```bash
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_getChainIdentifier",
+    "params": []
+  }'
+```
+
+## Response Format
+
+Successful responses return a result:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {...}
+}
+```
+
+Errors return an error object:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32600,
+    "message": "Invalid request"
+  }
+}
+```
+
+## Rate Limits
+
+Public nodes may enforce rate limits. For production applications, consider running your own full node.
+
+## API Categories
+
+<CardGroup cols={2}>
+  <Card title="Read API" icon="book-open" href="/api/json-rpc/read-api">
+    Query blockchain data including transactions, objects, and checkpoints
+  </Card>
+  
+  <Card title="Write API" icon="pen" href="/api/json-rpc/write-api">
+    Execute transactions and call Move view functions
+  </Card>
+  
+  <Card title="Coin API" icon="coins" href="/api/json-rpc/coin-api">
+    Query coin balances, metadata, and supply information
+  </Card>
+  
+  <Card title="Governance API" icon="landmark" href="/api/json-rpc/governance-api">
+    Access staking, validator, and governance data
+  </Card>
+</CardGroup>
+
+## SDK Support
+
+For easier integration, use the official IOTA SDKs:
+
+- [TypeScript SDK](/sdk/typescript)
+- [Rust SDK](/sdk/rust)

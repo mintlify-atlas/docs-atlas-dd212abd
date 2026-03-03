@@ -1,0 +1,241 @@
+---
+title: GraphQL API Overview
+description: Overview of the IOTA GraphQL API for flexible blockchain data queries
+---
+
+The IOTA GraphQL API provides a flexible, powerful interface for querying blockchain data through a GraphQL schema. It offers read access to the Indexer database and enables transaction execution through the fullnode JSON-RPC API.
+
+## What is GraphQL?
+
+GraphQL is a query language for APIs that allows clients to request exactly the data they need. Unlike REST APIs with fixed endpoints, GraphQL enables:
+
+- **Precise queries** - Request only the fields you need
+- **Nested data** - Fetch related data in a single query
+- **Type safety** - Strongly typed schema with introspection
+- **Single endpoint** - All queries go through one endpoint
+
+## API Endpoints
+
+### Mainnet
+
+```bash
+https://api.iota.io/graphql
+```
+
+### Testnet
+
+```bash
+https://api.testnet.iota.io/graphql
+```
+
+### Local Node
+
+```bash
+http://127.0.0.1:8000
+```
+
+## Architecture
+
+The GraphQL server architecture:
+
+```
+Client → GraphQL Server → Indexer Database
+                        ↓
+                   Fullnode RPC (for mutations)
+```
+
+The server provides:
+- **Query** - Read operations for fetching blockchain data
+- **Mutation** - Write operations for executing transactions
+
+## Making Requests
+
+GraphQL requests can be sent via HTTP POST:
+
+```bash
+curl -X POST https://api.iota.io/graphql \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "{ chainIdentifier }"
+  }'
+```
+
+## Interactive IDE
+
+Access the GraphiQL IDE at `https://api.iota.io/graphql` in your browser to:
+
+- Write and test queries interactively
+- Explore the schema with auto-complete
+- View documentation for all types and fields
+- See query results in real-time
+
+## Basic Query Example
+
+Fetch the chain identifier:
+
+```graphql
+{
+  chainIdentifier
+}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "chainIdentifier": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+  }
+}
+```
+
+## Query Features
+
+### Field Selection
+
+Request only the fields you need:
+
+```graphql
+{
+  object(address: "0x5") {
+    address
+    version
+    digest
+  }
+}
+```
+
+### Nested Queries
+
+Fetch related data in one request:
+
+```graphql
+{
+  address(address: "0x479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747") {
+    address
+    balance {
+      totalBalance
+      coinType { repr }
+    }
+    coins {
+      nodes {
+        contents {
+          type { repr }
+        }
+      }
+    }
+  }
+}
+```
+
+### Pagination
+
+Many queries support cursor-based pagination:
+
+```graphql
+{
+  checkpoints(first: 10) {
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    nodes {
+      sequenceNumber
+      timestamp
+    }
+  }
+}
+```
+
+## Schema Organization
+
+The GraphQL schema is organized around these main types:
+
+### Core Types
+
+- **Address** - Account addresses and their data
+- **Object** - On-chain objects (coins, packages, etc.)
+- **TransactionBlock** - Transaction blocks and their effects
+- **Checkpoint** - Checkpoints containing finalized transactions
+- **Epoch** - Epoch information and statistics
+
+### Query Entry Points
+
+- `object(address: "...")` - Query a specific object
+- `address(address: "...")` - Query an address
+- `transactionBlock(digest: "...")` - Query a transaction
+- `checkpoint(sequenceNumber: ...)` - Query a checkpoint
+- `epoch(id: ...)` - Query an epoch
+
+### Connections
+
+Many fields return "Connection" types for paginated results:
+
+- `nodes` - Array of items
+- `edges` - Array of edges with cursors
+- `pageInfo` - Pagination metadata
+
+## API Comparison
+
+### GraphQL vs JSON-RPC
+
+| Feature | GraphQL | JSON-RPC |
+|---------|---------|----------|
+| **Data Fetching** | Request specific fields | Fixed response structure |
+| **Multiple Resources** | Single query | Multiple RPC calls |
+| **Type Safety** | Built-in schema | Manual validation |
+| **Learning Curve** | Medium | Low |
+| **Flexibility** | High | Medium |
+
+### When to Use GraphQL
+
+Use GraphQL when you need:
+
+- Complex nested data in a single query
+- Precise control over returned fields
+- Reduced over-fetching of data
+- Interactive development with GraphiQL
+- Strong typing and schema introspection
+
+### When to Use JSON-RPC
+
+Use JSON-RPC when you need:
+
+- Simple, straightforward queries
+- Compatibility with existing tools
+- Lower learning curve
+- Direct method-based API calls
+
+## Rate Limits
+
+The GraphQL API enforces limits:
+
+- **Max query depth** - 15 levels
+- **Max query nodes** - 500 per query
+- **Max output nodes** - 100,000 per response
+- **Query timeout** - 15 seconds
+- **Max page size** - Varies by query type
+
+These limits can be configured on self-hosted nodes.
+
+## GraphQL Categories
+
+<CardGroup cols={2}>
+  <Card title="Queries" icon="magnifying-glass" href="/api/graphql/queries">
+    Read blockchain data with flexible GraphQL queries
+  </Card>
+  
+  <Card title="Mutations" icon="pen-to-square" href="/api/graphql/mutations">
+    Execute transactions through GraphQL mutations
+  </Card>
+  
+  <Card title="Examples" icon="code" href="/api/graphql/examples">
+    Common query patterns and use cases
+  </Card>
+</CardGroup>
+
+## Resources
+
+- [Official GraphQL Documentation](https://graphql.org/learn/)
+- [GraphQL Schema](https://github.com/iotaledger/iota/blob/develop/crates/iota-graphql-rpc/schema.graphql)
+- [TypeScript GraphQL Transport](/sdk/typescript/graphql-transport)

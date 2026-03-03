@@ -1,0 +1,550 @@
+---
+title: GraphQL Transport
+description: Use GraphQL transport for advanced blockchain queries with the IOTA TypeScript SDK
+---
+
+The IOTA TypeScript SDK provides a GraphQL transport layer for advanced querying capabilities. GraphQL offers more flexible and efficient data fetching compared to traditional JSON-RPC.
+
+## Installation
+
+The GraphQL transport is included in the main SDK package:
+
+```bash
+npm install @iota/iota-sdk
+```
+
+## Basic Setup
+
+```typescript
+import { IotaGraphQLClient } from '@iota/iota-sdk/graphql';
+
+// Create a GraphQL client
+const graphqlClient = new IotaGraphQLClient({
+  url: 'https://api.devnet.iota.cafe/graphql',
+});
+```
+
+## Client Configuration
+
+The `IotaGraphQLClient` accepts the following options:
+
+```typescript
+interface IotaGraphQLClientOptions {
+  url: string;                           // GraphQL endpoint URL
+  fetch?: typeof fetch;                  // Custom fetch implementation
+  headers?: Record<string, string>;      // Additional headers
+  queries?: Record<string, GraphQLDocument>;  // Predefined queries
+}
+```
+
+### With Custom Headers
+
+```typescript
+const graphqlClient = new IotaGraphQLClient({
+  url: 'https://api.devnet.iota.cafe/graphql',
+  headers: {
+    'Authorization': 'Bearer token',
+    'X-Custom-Header': 'value',
+  },
+});
+```
+
+### With Custom Fetch
+
+```typescript
+import fetch from 'node-fetch';
+
+const graphqlClient = new IotaGraphQLClient({
+  url: 'https://api.devnet.iota.cafe/graphql',
+  fetch: fetch as any,
+});
+```
+
+## Executing Queries
+
+### Basic Query
+
+```typescript
+import { IotaGraphQLClient } from '@iota/iota-sdk/graphql';
+
+const client = new IotaGraphQLClient({
+  url: 'https://api.devnet.iota.cafe/graphql',
+});
+
+const result = await client.query({
+  query: `
+    query GetObject($id: IotaAddress!) {
+      object(address: $id) {
+        address
+        version
+        digest
+        storageRebate
+      }
+    }
+  `,
+  variables: {
+    id: '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+  },
+});
+
+console.log('Object:', result.data);
+```
+
+### Typed Queries with gql.tada
+
+The SDK supports typed GraphQL queries using `gql.tada`:
+
+```typescript
+import { graphql } from '@iota/iota-sdk/graphql/schemas/2025.2';
+import { IotaGraphQLClient } from '@iota/iota-sdk/graphql';
+
+// Define a typed query
+const GET_OBJECT = graphql(`
+  query GetObject($id: IotaAddress!) {
+    object(address: $id) {
+      address
+      version
+      digest
+      owner {
+        ... on AddressOwner {
+          owner {
+            address
+          }
+        }
+      }
+    }
+  }
+`);
+
+const client = new IotaGraphQLClient({
+  url: 'https://api.devnet.iota.cafe/graphql',
+});
+
+// Execute typed query
+const result = await client.query({
+  query: GET_OBJECT,
+  variables: {
+    id: '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+  },
+});
+
+// result.data is fully typed!
+console.log('Object address:', result.data?.object?.address);
+```
+
+## Common GraphQL Queries
+
+### Query Objects
+
+```typescript
+const result = await client.query({
+  query: `
+    query GetObjects($address: IotaAddress!) {
+      owner(address: $address) {
+        address
+        objects {
+          nodes {
+            address
+            version
+            digest
+          }
+        }
+      }
+    }
+  `,
+  variables: {
+    address: '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+  },
+});
+
+console.log('Objects:', result.data);
+```
+
+### Query Transactions
+
+```typescript
+const result = await client.query({
+  query: `
+    query GetTransactions($address: IotaAddress!, $first: Int!) {
+      transactionBlocks(
+        filter: { signAddress: $address }
+        first: $first
+      ) {
+        nodes {
+          digest
+          sender {
+            address
+          }
+          gasInput {
+            gasSponsor {
+              address
+            }
+            gasPrice
+          }
+          effects {
+            status
+            errors
+          }
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  `,
+  variables: {
+    address: '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+    first: 10,
+  },
+});
+
+console.log('Transactions:', result.data);
+```
+
+### Query Events
+
+```typescript
+const result = await client.query({
+  query: `
+    query GetEvents($type: String!) {
+      events(filter: { eventType: $type }) {
+        nodes {
+          type {
+            repr
+          }
+          sender {
+            address
+          }
+          timestamp
+          json
+        }
+      }
+    }
+  `,
+  variables: {
+    type: '0x2::coin::CoinCreated',
+  },
+});
+
+console.log('Events:', result.data);
+```
+
+### Query Coins
+
+```typescript
+const result = await client.query({
+  query: `
+    query GetCoins($owner: IotaAddress!) {
+      owner(address: $owner) {
+        coins {
+          nodes {
+            coinType
+            coinObjectCount
+            totalBalance
+          }
+        }
+      }
+    }
+  `,
+  variables: {
+    owner: '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+  },
+});
+
+console.log('Coins:', result.data);
+```
+
+## Pagination
+
+GraphQL uses cursor-based pagination:
+
+```typescript
+async function getAllTransactions(address: string) {
+  let hasNextPage = true;
+  let cursor = null;
+  const allTxs = [];
+  
+  while (hasNextPage) {
+    const result = await client.query({
+      query: `
+        query GetTransactions($address: IotaAddress!, $cursor: String) {
+          transactionBlocks(
+            filter: { signAddress: $address }
+            first: 50
+            after: $cursor
+          ) {
+            nodes {
+              digest
+            }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+          }
+        }
+      `,
+      variables: {
+        address,
+        cursor,
+      },
+    });
+    
+    const page = result.data?.transactionBlocks;
+    if (page?.nodes) {
+      allTxs.push(...page.nodes);
+    }
+    
+    hasNextPage = page?.pageInfo?.hasNextPage ?? false;
+    cursor = page?.pageInfo?.endCursor ?? null;
+  }
+  
+  return allTxs;
+}
+```
+
+## Fragments
+
+Use GraphQL fragments to reuse query parts:
+
+```typescript
+const result = await client.query({
+  query: `
+    fragment ObjectFields on Object {
+      address
+      version
+      digest
+      storageRebate
+    }
+    
+    query GetObjects($ids: [IotaAddress!]!) {
+      objects(ids: $ids) {
+        ...ObjectFields
+        owner {
+          ... on AddressOwner {
+            owner {
+              address
+            }
+          }
+        }
+      }
+    }
+  `,
+  variables: {
+    ids: [
+      '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+      '0x9ad3de788483877fe348aef7f6ba3e52b9cfee5f52de0694d36b16a6b50c1429',
+    ],
+  },
+});
+```
+
+## Error Handling
+
+```typescript
+try {
+  const result = await client.query({
+    query: /* GraphQL */ `
+      query GetObject($id: IotaAddress!) {
+        object(address: $id) {
+          address
+        }
+      }
+    `,
+    variables: { id: objectId },
+  });
+  
+  if (result.errors) {
+    console.error('GraphQL errors:', result.errors);
+  }
+  
+  console.log('Data:', result.data);
+} catch (error) {
+  console.error('Request failed:', error);
+}
+```
+
+## Predefined Queries
+
+Register commonly used queries:
+
+```typescript
+import { IotaGraphQLClient } from '@iota/iota-sdk/graphql';
+import { graphql } from '@iota/iota-sdk/graphql/schemas/2025.2';
+
+const GET_OBJECT = graphql(`
+  query GetObject($id: IotaAddress!) {
+    object(address: $id) {
+      address
+      version
+    }
+  }
+`);
+
+const client = new IotaGraphQLClient({
+  url: 'https://api.devnet.iota.cafe/graphql',
+  queries: {
+    getObject: GET_OBJECT,
+  },
+});
+
+// Use predefined query
+const result = await client.query({
+  query: client.queries.getObject,
+  variables: { id: objectId },
+});
+```
+
+## GraphQL vs JSON-RPC
+
+<Tabs>
+  <Tab title="GraphQL Advantages">
+    - **Flexible queries**: Request exactly the data you need
+    - **Batch queries**: Combine multiple queries in one request
+    - **Strongly typed**: Full TypeScript support with gql.tada
+    - **Efficient**: Reduce over-fetching and under-fetching
+    - **Advanced filtering**: Complex query filters and sorting
+    
+    ```typescript
+    // Get only specific fields
+    const result = await graphqlClient.query({
+      query: `
+        query {
+          object(address: "0x...") {
+            address  # Only fetch address
+          }
+        }
+      `,
+    });
+    ```
+  </Tab>
+  
+  <Tab title="JSON-RPC Advantages">
+    - **Simpler API**: Straightforward method calls
+    - **Wider support**: Standard across many tools
+    - **Better for simple queries**: Less overhead for basic operations
+    
+    ```typescript
+    // Simple method call
+    const object = await client.getObject({
+      id: '0x...',
+      options: { showContent: true },
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Schema Versions
+
+The SDK includes GraphQL schemas for different versions:
+
+```typescript
+// Use specific schema version
+import { graphql } from '@iota/iota-sdk/graphql/schemas/2025.2';
+
+const query = graphql(`
+  query GetObject($id: IotaAddress!) {
+    object(address: $id) {
+      address
+    }
+  }
+`);
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Request Only Needed Fields">
+    GraphQL allows you to request exactly the fields you need:
+    
+    ```typescript
+    // Good - request only needed fields
+    const result = await client.query({
+      query: `
+        query {
+          object(address: "0x...") {
+            address
+            version
+          }
+        }
+      `,
+    });
+    
+    // Avoid - requesting all fields unnecessarily
+    ```
+  </Accordion>
+  
+  <Accordion title="Use Typed Queries">
+    Leverage TypeScript types with gql.tada:
+    
+    ```typescript
+    import { graphql } from '@iota/iota-sdk/graphql/schemas/2025.2';
+    
+    const query = graphql(`
+      query GetObject($id: IotaAddress!) {
+        object(address: $id) {
+          address
+          version
+        }
+      }
+    `);
+    
+    // Fully typed result
+    const result = await client.query({ query, variables: { id } });
+    ```
+  </Accordion>
+  
+  <Accordion title="Batch Related Queries">
+    Combine related queries to reduce round trips:
+    
+    ```typescript
+    const result = await client.query({
+      query: `
+        query GetAccountData($address: IotaAddress!) {
+          owner(address: $address) {
+            address
+            objects { nodes { address } }
+            coins { nodes { coinType totalBalance } }
+          }
+        }
+      `,
+      variables: { address },
+    });
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle Errors Gracefully">
+    Always check for both errors and data:
+    
+    ```typescript
+    const result = await client.query({ query, variables });
+    
+    if (result.errors) {
+      // Handle GraphQL errors
+      console.error('Query errors:', result.errors);
+    }
+    
+    if (result.data) {
+      // Process data
+      console.log('Data:', result.data);
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Reading Data" icon="book" href="./reading-data">
+    Query blockchain data with JSON-RPC
+  </Card>
+  <Card title="Events" icon="bell" href="./events">
+    Subscribe to and query events
+  </Card>
+  <Card title="Client Setup" icon="gear" href="./client-setup">
+    Configure the IotaClient
+  </Card>
+  <Card title="Examples" icon="code" href="./examples">
+    See complete examples
+  </Card>
+</CardGroup>

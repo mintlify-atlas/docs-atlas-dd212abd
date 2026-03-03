@@ -1,0 +1,523 @@
+---
+title: Capability Pattern
+description: Use capability objects for access control in IOTA Move smart contracts
+---
+
+# Capability Pattern
+
+The Capability pattern is a fundamental design pattern in Move that uses objects to represent permissions and access rights. A capability is an unforgeable token that grants the holder specific privileges.
+
+## Core Concept
+
+Capabilities are objects with the `key` ability that represent permissions. Only the holder of a capability can perform certain privileged operations.
+
+### Key Properties
+
+- **Unforgeable**: Can only be created by the module that defines them
+- **Transferable**: Can be transferred to delegate authority
+- **Storable**: Can be stored in other objects for complex access control
+- **Auditable**: Ownership is tracked on-chain
+
+## Basic Capability
+
+### Simple Admin Capability
+
+```move
+module example::admin {
+    use iota::object::{Self, UID};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    /// Capability granting admin privileges
+    public struct AdminCap has key, store {
+        id: UID,
+    }
+
+    /// Shared resource that can be managed
+    public struct Config has key {
+        id: UID,
+        value: u64,
+    }
+
+    /// Initialize - create admin cap and config
+    fun init(ctx: &mut TxContext) {
+        // Create admin capability
+        let admin_cap = AdminCap {
+            id: object::new(ctx),
+        };
+        
+        // Create config
+        let config = Config {
+            id: object::new(ctx),
+            value: 0,
+        };
+        
+        transfer::transfer(admin_cap, ctx.sender());
+        transfer::share_object(config);
+    }
+
+    /// Only admin can update config
+    public fun update_config(
+        _admin: &AdminCap,
+        config: &mut Config,
+        new_value: u64
+    ) {
+        config.value = new_value;
+    }
+
+    /// Anyone can read config
+    public fun get_value(config: &Config): u64 {
+        config.value
+    }
+}
+```
+
+## Treasury Capability Pattern
+
+The `TreasuryCap` from the `coin` module is a perfect example:
+
+```move
+use iota::coin::{Self, TreasuryCap, Coin};
+
+public struct MY_COIN has drop {}
+
+fun init(witness: MY_COIN, ctx: &mut TxContext) {
+    let (treasury, metadata) = coin::create_currency(
+        witness,
+        9,
+        b"MYCOIN",
+        b"My Coin",
+        b"A custom coin",
+        option::none(),
+        ctx
+    );
+    
+    transfer::public_freeze_object(metadata);
+    transfer::public_transfer(treasury, ctx.sender());
+}
+
+/// Only holder of TreasuryCap can mint
+public fun mint_coins(
+    treasury: &mut TreasuryCap<MY_COIN>,
+    amount: u64,
+    ctx: &mut TxContext
+): Coin<MY_COIN> {
+    coin::mint(treasury, amount, ctx)
+}
+```
+
+## Publisher Capability
+
+The `Publisher` object from the `package` module uses the capability pattern:
+
+```move
+module example::my_module {
+    use iota::package::{Self, Publisher};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    public struct MY_MODULE has drop {}
+
+    fun init(otw: MY_MODULE, ctx: &mut TxContext) {
+        let publisher = package::claim(otw, ctx);
+        transfer::public_transfer(publisher, ctx.sender());
+    }
+
+    /// Only publisher can perform this operation
+    public fun publisher_only_action(
+        publisher: &Publisher,
+        ctx: &TxContext
+    ) {
+        assert!(publisher.from_module<MY_MODULE>(), 0);
+        // Perform privileged action
+    }
+}
+```
+
+## Multi-Level Capabilities
+
+Create hierarchical access control with multiple capability types:
+
+```move
+module example::organization {
+    use iota::object::{Self, UID};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    /// Top-level admin capability
+    public struct AdminCap has key, store {
+        id: UID,
+    }
+
+    /// Manager capability (less privileged)
+    public struct ManagerCap has key, store {
+        id: UID,
+    }
+
+    /// Member capability (least privileged)
+    public struct MemberCap has key, store {
+        id: UID,
+    }
+
+    public struct Organization has key {
+        id: UID,
+        name: vector<u8>,
+        member_count: u64,
+    }
+
+    fun init(ctx: &mut TxContext) {
+        let admin = AdminCap { id: object::new(ctx) };
+        let org = Organization {
+            id: object::new(ctx),
+            name: b"My Organization",
+            member_count: 0,
+        };
+        
+        transfer::transfer(admin, ctx.sender());
+        transfer::share_object(org);
+    }
+
+    /// Only admin can create manager capabilities
+    public fun create_manager(
+        _admin: &AdminCap,
+        recipient: address,
+        ctx: &mut TxContext
+    ) {
+        let manager = ManagerCap { id: object::new(ctx) };
+        transfer::transfer(manager, recipient);
+    }
+
+    /// Only admin or manager can create member capabilities
+    public fun create_member(
+        org: &mut Organization,
+        recipient: address,
+        ctx: &mut TxContext
+    ) {
+        let member = MemberCap { id: object::new(ctx) };
+        org.member_count = org.member_count + 1;
+        transfer::transfer(member, recipient);
+    }
+
+    /// Admin-only operation
+    public fun admin_action(_admin: &AdminCap) {
+        // Admin-only logic
+    }
+
+    /// Manager or admin operation
+    public fun manager_action(_manager: &ManagerCap) {
+        // Manager logic
+    }
+
+    /// Member, manager, or admin operation
+    public fun member_action(_member: &MemberCap) {
+        // Member logic
+    }
+}
+```
+
+## Parameterized Capabilities
+
+Capabilities can be generic over types:
+
+```move
+module example::generic_cap {
+    use iota::object::{Self, UID};
+
+    /// Capability to manage resources of type T
+    public struct ManagerCap<phantom T> has key, store {
+        id: UID,
+    }
+
+    public struct ResourceA has key { id: UID, value: u64 }
+    public struct ResourceB has key { id: UID, value: u64 }
+
+    public fun update_a(
+        _cap: &ManagerCap<ResourceA>,
+        resource: &mut ResourceA,
+        value: u64
+    ) {
+        resource.value = value;
+    }
+
+    public fun update_b(
+        _cap: &ManagerCap<ResourceB>,
+        resource: &mut ResourceB,
+        value: u64
+    ) {
+        resource.value = value;
+    }
+}
+```
+
+## Capability with Data
+
+Capabilities can store additional data:
+
+```move
+module example::quota {
+    use iota::object::{Self, UID};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    const EQuotaExceeded: u64 = 0;
+
+    /// Capability with usage quota
+    public struct QuotaCap has key {
+        id: UID,
+        remaining: u64,
+    }
+
+    public struct Service has key {
+        id: UID,
+    }
+
+    public fun create_quota(
+        quota: u64,
+        recipient: address,
+        ctx: &mut TxContext
+    ) {
+        let cap = QuotaCap {
+            id: object::new(ctx),
+            remaining: quota,
+        };
+        transfer::transfer(cap, recipient);
+    }
+
+    public fun use_service(
+        cap: &mut QuotaCap,
+        service: &Service,
+        amount: u64
+    ) {
+        assert!(cap.remaining >= amount, EQuotaExceeded);
+        cap.remaining = cap.remaining - amount;
+        // Use service
+    }
+
+    public fun get_remaining(cap: &QuotaCap): u64 {
+        cap.remaining
+    }
+}
+```
+
+## Time-Limited Capability
+
+```move
+module example::time_limited {
+    use iota::object::{Self, UID};
+    use iota::clock::Clock;
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    const ECapabilityExpired: u64 = 0;
+
+    public struct TemporaryCap has key {
+        id: UID,
+        expires_at: u64,
+    }
+
+    public fun create_temporary_cap(
+        duration_ms: u64,
+        clock: &Clock,
+        recipient: address,
+        ctx: &mut TxContext
+    ) {
+        let cap = TemporaryCap {
+            id: object::new(ctx),
+            expires_at: clock.timestamp_ms() + duration_ms,
+        };
+        transfer::transfer(cap, recipient);
+    }
+
+    public fun use_capability(
+        cap: &TemporaryCap,
+        clock: &Clock
+    ) {
+        assert!(clock.timestamp_ms() < cap.expires_at, ECapabilityExpired);
+        // Perform action
+    }
+
+    public fun is_expired(cap: &TemporaryCap, clock: &Clock): bool {
+        clock.timestamp_ms() >= cap.expires_at
+    }
+}
+```
+
+## Delegatable Capability
+
+```move
+module example::delegatable {
+    use iota::object::{Self, UID};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    public struct MasterCap has key {
+        id: UID,
+    }
+
+    public struct DelegateCap has key {
+        id: UID,
+        delegated_by: address,
+        can_delegate: bool,
+    }
+
+    fun init(ctx: &mut TxContext) {
+        let master = MasterCap { id: object::new(ctx) };
+        transfer::transfer(master, ctx.sender());
+    }
+
+    /// Master can create delegates
+    public fun create_delegate(
+        _master: &MasterCap,
+        can_delegate: bool,
+        recipient: address,
+        ctx: &mut TxContext
+    ) {
+        let delegate = DelegateCap {
+            id: object::new(ctx),
+            delegated_by: ctx.sender(),
+            can_delegate,
+        };
+        transfer::transfer(delegate, recipient);
+    }
+
+    /// Delegates can create sub-delegates if allowed
+    public fun create_subdelegate(
+        delegate: &DelegateCap,
+        recipient: address,
+        ctx: &mut TxContext
+    ) {
+        assert!(delegate.can_delegate, 0);
+        let subdelegate = DelegateCap {
+            id: object::new(ctx),
+            delegated_by: ctx.sender(),
+            can_delegate: false,  // Sub-delegates cannot delegate further
+        };
+        transfer::transfer(subdelegate, recipient);
+    }
+
+    public fun perform_action(_cap: &DelegateCap) {
+        // Both master and delegates can perform this
+    }
+}
+```
+
+## Revocable Capability
+
+```move
+module example::revocable {
+    use iota::object::{Self, UID, ID};
+    use iota::table::{Self, Table};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    const ECapabilityRevoked: u64 = 0;
+
+    public struct CapabilityRegistry has key {
+        id: UID,
+        revoked: Table<ID, bool>,
+    }
+
+    public struct AdminCap has key { id: UID }
+
+    public struct RevocableCap has key, store {
+        id: UID,
+    }
+
+    fun init(ctx: &mut TxContext) {
+        let registry = CapabilityRegistry {
+            id: object::new(ctx),
+            revoked: table::new(ctx),
+        };
+        let admin = AdminCap { id: object::new(ctx) };
+        
+        transfer::share_object(registry);
+        transfer::transfer(admin, ctx.sender());
+    }
+
+    public fun issue_capability(
+        _admin: &AdminCap,
+        recipient: address,
+        ctx: &mut TxContext
+    ) {
+        let cap = RevocableCap { id: object::new(ctx) };
+        transfer::transfer(cap, recipient);
+    }
+
+    public fun revoke(
+        _admin: &AdminCap,
+        registry: &mut CapabilityRegistry,
+        cap_id: ID
+    ) {
+        table::add(&mut registry.revoked, cap_id, true);
+    }
+
+    public fun use_capability(
+        cap: &RevocableCap,
+        registry: &CapabilityRegistry
+    ) {
+        let cap_id = object::id(cap);
+        assert!(!table::contains(&registry.revoked, cap_id), ECapabilityRevoked);
+        // Perform action
+    }
+}
+```
+
+## Best Practices
+
+1. **Keep capabilities simple**: Don't add unnecessary data or complexity
+
+2. **Use meaningful names**: Name capabilities after the permission they grant (e.g., `MintCap`, `AdminCap`)
+
+3. **Document authority**: Clearly document what each capability allows
+
+4. **Consider lifecycle**: Plan for capability creation, transfer, and destruction
+
+5. **Validate on use**: Always validate the capability when it's used, not just its existence
+
+6. **Use store sparingly**: Only add `store` if the capability needs to be stored in other objects
+
+7. **Protect initialization**: Ensure capabilities are issued correctly in `init` or guarded functions
+
+8. **Consider revocation**: Decide if capabilities should be revocable and implement accordingly
+
+## Common Patterns
+
+### One-Time-Witness Capability
+
+Use the one-time-witness pattern to ensure a capability is created exactly once:
+
+```move
+public struct MY_MODULE has drop {}
+
+fun init(otw: MY_MODULE, ctx: &mut TxContext) {
+    // Can only run once
+    let cap = create_special_capability(otw, ctx);
+    transfer::transfer(cap, ctx.sender());
+}
+```
+
+### Capability as Module Authority
+
+Use capabilities to prove module authority:
+
+```move
+public struct WitnessCap has key, store { id: UID }
+
+/// Only callable by module that owns WitnessCap
+public fun protected_function(_cap: &WitnessCap) {
+    // Protected operation
+}
+```
+
+### Composable Capabilities
+
+Combine multiple capabilities for complex access control:
+
+```move
+public fun advanced_operation(
+    admin: &AdminCap,
+    manager: &ManagerCap,
+) {
+    // Requires both capabilities
+}
+```

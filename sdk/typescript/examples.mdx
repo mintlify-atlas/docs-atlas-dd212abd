@@ -1,0 +1,680 @@
+---
+title: Complete Code Examples
+description: Ready-to-use code examples for common IOTA TypeScript SDK operations
+---
+
+This page provides complete, working code examples for common operations with the IOTA TypeScript SDK.
+
+## Setup and Installation
+
+### Project Setup
+
+```bash
+# Create a new project
+mkdir iota-sdk-examples
+cd iota-sdk-examples
+
+# Initialize package.json
+npm init -y
+
+# Install SDK
+npm install @iota/iota-sdk
+
+# Install TypeScript (optional)
+npm install -D typescript @types/node
+```
+
+### Basic Configuration
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+// Initialize client
+const client = new IotaClient({ url: getFullnodeUrl('devnet') });
+
+// Generate or import keypair
+const keypair = new Ed25519Keypair();
+const address = keypair.getPublicKey().toIotaAddress();
+
+console.log('Address:', address);
+```
+
+## Example 1: Transfer Objects
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+async function transferObjectExample() {
+  const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+  const keypair = new Ed25519Keypair();
+  
+  const tx = new Transaction();
+  
+  // Transfer objects to recipient
+  tx.transferObjects(
+    ['0xe19739da1a701eadc21683c5b127e62b553e833e8a15a4f292f4f48b4afea3f2'],
+    '0x1d20dcdb2bca4f508ea9613994683eb4e76e9c4ed371169677c1be02aaf0b12a',
+  );
+  
+  const result = await client.signAndExecuteTransaction({
+    signer: keypair,
+    transaction: tx,
+  });
+  
+  console.log('Transaction digest:', result.digest);
+  return result;
+}
+
+transferObjectExample().catch(console.error);
+```
+
+## Example 2: Transfer IOTA Tokens
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+async function transferIotaExample() {
+  const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+  const keypair = new Ed25519Keypair();
+  
+  const tx = new Transaction();
+  
+  // Split 1000 NANOS from gas coin
+  const [coin] = tx.splitCoins(tx.gas, [1000]);
+  
+  // Transfer to recipient
+  const recipientAddress = keypair.getPublicKey().toIotaAddress();
+  tx.transferObjects([coin], recipientAddress);
+  
+  const result = await client.signAndExecuteTransaction({
+    signer: keypair,
+    transaction: tx,
+  });
+  
+  console.log('Transfer completed:', result.digest);
+  return result;
+}
+
+transferIotaExample().catch(console.error);
+```
+
+## Example 3: Merge Coins
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+async function mergeCoinsExample() {
+  const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+  const keypair = new Ed25519Keypair();
+  
+  const tx = new Transaction();
+  
+  // Merge multiple coins into one
+  tx.mergeCoins(
+    '0xe19739da1a701eadc21683c5b127e62b553e833e8a15a4f292f4f48b4afea3f2',
+    ['0x127a8975134a4824d9288722c4ee4fc824cd22502ab4ad9f6617f3ba19229c1b'],
+  );
+  
+  const result = await client.signAndExecuteTransaction({
+    signer: keypair,
+    transaction: tx,
+  });
+  
+  console.log('Coins merged:', result.digest);
+  return result;
+}
+
+mergeCoinsExample().catch(console.error);
+```
+
+## Example 4: Call Move Function
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+async function moveCallExample() {
+  const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+  const keypair = new Ed25519Keypair();
+  
+  const packageObjectId = '0x...';
+  const tx = new Transaction();
+  
+  // Call a Move function
+  tx.moveCall({
+    target: `${packageObjectId}::nft::mint`,
+    arguments: [tx.pure.string('Example NFT')],
+  });
+  
+  const result = await client.signAndExecuteTransaction({
+    signer: keypair,
+    transaction: tx,
+  });
+  
+  console.log('Move call executed:', result.digest);
+  return result;
+}
+
+moveCallExample().catch(console.error);
+```
+
+## Example 5: Query Account Data
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+
+async function queryAccountExample() {
+  const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+  
+  const address = '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231';
+  
+  // Get owned objects
+  const objects = await client.getOwnedObjects({ owner: address });
+  console.log('Owned objects:', objects.data.length);
+  
+  // Get coins
+  const coins = await client.getCoins({ owner: address });
+  console.log('Coins:', coins.data.length);
+  
+  // Get IOTA balance
+  const balance = await client.getBalance({ owner: address });
+  console.log('IOTA balance:', balance.totalBalance);
+  
+  // Get all balances
+  const allBalances = await client.getAllBalances({ owner: address });
+  console.log('All balances:', allBalances);
+  
+  return { objects, coins, balance, allBalances };
+}
+
+queryAccountExample().catch(console.error);
+```
+
+## Example 6: Query Events
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+
+async function queryEventsExample() {
+  const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+  
+  const address = '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231';
+  
+  // Query events from sender
+  const events = await client.queryEvents({
+    query: { Sender: address },
+    limit: 10,
+  });
+  
+  console.log('Events:', events.data.length);
+  
+  events.data.forEach((event) => {
+    console.log('Event type:', event.type);
+    console.log('Sender:', event.sender);
+    console.log('Data:', event.parsedJson);
+  });
+  
+  return events;
+}
+
+queryEventsExample().catch(console.error);
+```
+
+## Example 7: Subscribe to Events
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+
+async function subscribeEventsExample() {
+  const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+  
+  const address = '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231';
+  
+  console.log('Subscribing to events from:', address);
+  
+  const unsubscribe = await client.subscribeEvent({
+    filter: { Sender: address },
+    onMessage: (event) => {
+      console.log('\nNew event received:');
+      console.log('Type:', event.type);
+      console.log('Timestamp:', event.timestampMs);
+      console.log('Data:', event.parsedJson);
+    },
+  });
+  
+  // Unsubscribe after 60 seconds
+  setTimeout(() => {
+    console.log('\nUnsubscribing...');
+    unsubscribe();
+  }, 60000);
+}
+
+subscribeEventsExample().catch(console.error);
+```
+
+## Example 8: Multisig Transaction
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { MultiSigPublicKey, MultiSigSigner } from '@iota/iota-sdk/multisig';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+async function multisigExample() {
+  const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+  
+  // Create three keypairs
+  const keypair1 = new Ed25519Keypair();
+  const keypair2 = new Ed25519Keypair();
+  const keypair3 = new Ed25519Keypair();
+  
+  // Create 2-of-3 multisig
+  const multisigPublicKey = MultiSigPublicKey.fromPublicKeys({
+    threshold: 2,
+    publicKeys: [
+      { publicKey: keypair1.getPublicKey(), weight: 1 },
+      { publicKey: keypair2.getPublicKey(), weight: 1 },
+      { publicKey: keypair3.getPublicKey(), weight: 1 },
+    ],
+  });
+  
+  const multisigAddress = multisigPublicKey.toIotaAddress();
+  console.log('Multisig address:', multisigAddress);
+  
+  // Create transaction
+  const tx = new Transaction();
+  tx.transferObjects(['0x...'], '0x...');
+  
+  // Sign with 2 out of 3 keys
+  const multiSigSigner = new MultiSigSigner({
+    multisigPublicKey,
+    signers: [keypair1, keypair2],
+  });
+  
+  const result = await client.signAndExecuteTransaction({
+    signer: multiSigSigner,
+    transaction: tx,
+  });
+  
+  console.log('Multisig transaction executed:', result.digest);
+  return result;
+}
+
+multisigExample().catch(console.error);
+```
+
+## Example 9: Derive Multiple Accounts
+
+```typescript
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { generateMnemonic } from '@iota/iota-sdk/cryptography';
+
+async function deriveAccountsExample() {
+  // Generate mnemonic
+  const mnemonic = generateMnemonic();
+  console.log('Mnemonic:', mnemonic);
+  console.log('\nDerived accounts:');
+  
+  // Derive multiple accounts from same mnemonic
+  for (let i = 0; i < 5; i++) {
+    const path = `m/44'/4218'/0'/0'/${i}'`;
+    const keypair = Ed25519Keypair.deriveKeypair(mnemonic, path);
+    const address = keypair.getPublicKey().toIotaAddress();
+    
+    console.log(`Account ${i}:`, address);
+  }
+}
+
+deriveAccountsExample().catch(console.error);
+```
+
+## Example 10: Request from Faucet
+
+```typescript
+import { getFaucetHost, requestIotaFromFaucetV0 } from '@iota/iota-sdk/faucet';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+
+async function faucetExample() {
+  const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+  const keypair = new Ed25519Keypair();
+  const address = keypair.getPublicKey().toIotaAddress();
+  
+  console.log('Address:', address);
+  
+  // Check balance before
+  const balanceBefore = await client.getBalance({ owner: address });
+  console.log('Balance before:', balanceBefore.totalBalance);
+  
+  // Request tokens from faucet
+  console.log('Requesting tokens from faucet...');
+  await requestIotaFromFaucetV0({
+    host: getFaucetHost('testnet'),
+    recipient: address,
+  });
+  
+  // Wait a bit for transaction to process
+  await new Promise(resolve => setTimeout(resolve, 5000));
+  
+  // Check balance after
+  const balanceAfter = await client.getBalance({ owner: address });
+  console.log('Balance after:', balanceAfter.totalBalance);
+  
+  return { address, balanceBefore, balanceAfter };
+}
+
+faucetExample().catch(console.error);
+```
+
+## Example 11: GraphQL Query
+
+```typescript
+import { IotaGraphQLClient } from '@iota/iota-sdk/graphql';
+
+async function graphqlExample() {
+  const client = new IotaGraphQLClient({
+    url: 'https://api.devnet.iota.cafe/graphql',
+  });
+  
+  const address = '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231';
+  
+  const result = await client.query({
+    query: `
+      query GetAccountData($address: IotaAddress!) {
+        owner(address: $address) {
+          address
+          objects {
+            nodes {
+              address
+              version
+              digest
+            }
+          }
+          coins {
+            nodes {
+              coinType
+              totalBalance
+            }
+          }
+        }
+      }
+    `,
+    variables: { address },
+  });
+  
+  console.log('GraphQL result:', result.data);
+  return result;
+}
+
+graphqlExample().catch(console.error);
+```
+
+## Example 12: Dry Run Transaction
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+async function dryRunExample() {
+  const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+  const keypair = new Ed25519Keypair();
+  
+  const tx = new Transaction();
+  const [coin] = tx.splitCoins(tx.gas, [1000]);
+  tx.transferObjects([coin], keypair.getPublicKey().toIotaAddress());
+  
+  // Build transaction
+  const txBytes = await tx.build({ client });
+  
+  // Dry run to simulate execution
+  console.log('Running dry run...');
+  const dryRunResult = await client.dryRunTransactionBlock({
+    transactionBlock: txBytes,
+  });
+  
+  console.log('Status:', dryRunResult.effects.status);
+  console.log('Gas used:', dryRunResult.effects.gasUsed);
+  
+  if (dryRunResult.effects.status.status === 'success') {
+    console.log('Transaction will succeed!');
+    
+    // Execute for real
+    const result = await client.signAndExecuteTransaction({
+      signer: keypair,
+      transaction: tx,
+    });
+    
+    console.log('Executed:', result.digest);
+    return result;
+  } else {
+    console.error('Transaction would fail:', dryRunResult.effects.status.error);
+  }
+}
+
+dryRunExample().catch(console.error);
+```
+
+## Example 13: Get Checkpoints
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+
+async function checkpointsExample() {
+  const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+  
+  // Get latest checkpoints
+  const checkpoints = await client.getCheckpoints({ 
+    descendingOrder: true,
+    limit: 10,
+  });
+  
+  console.log('Latest checkpoints:');
+  checkpoints.data.forEach((checkpoint) => {
+    console.log('\n-----------------------------------');
+    console.log('Sequence:', checkpoint.sequenceNumber);
+    console.log('Timestamp:', new Date(Number(checkpoint.timestampMs)));
+    console.log('Transactions:', checkpoint.transactions.length);
+  });
+  
+  // Get specific checkpoint
+  const checkpoint = await client.getCheckpoint({ id: '1994010' });
+  console.log('\nCheckpoint 1994010:');
+  console.log('Sequence:', checkpoint.sequenceNumber);
+  console.log('Timestamp:', checkpoint.timestampMs);
+  console.log('Transactions:', checkpoint.transactions.length);
+  
+  return { checkpoints, checkpoint };
+}
+
+checkpointsExample().catch(console.error);
+```
+
+## Example 14: Publish Move Package
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+import { execSync } from 'child_process';
+
+async function publishPackageExample() {
+  const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+  const keypair = new Ed25519Keypair();
+  
+  const cliPath = 'iota';
+  const packagePath = './my_move_package';
+  
+  // Build Move package
+  console.log('Building Move package...');
+  const { modules, dependencies } = JSON.parse(
+    execSync(
+      `${cliPath} move build --dump-bytecode-as-base64 --path ${packagePath}`,
+      { encoding: 'utf-8' },
+    ),
+  );
+  
+  const tx = new Transaction();
+  
+  // Publish package
+  const [upgradeCap] = tx.publish({
+    modules,
+    dependencies,
+  });
+  
+  // Transfer upgrade capability to publisher
+  tx.transferObjects([upgradeCap], keypair.getPublicKey().toIotaAddress());
+  
+  console.log('Publishing package...');
+  const result = await client.signAndExecuteTransaction({
+    signer: keypair,
+    transaction: tx,
+  });
+  
+  console.log('Package published!');
+  console.log('Transaction:', result.digest);
+  
+  return result;
+}
+
+publishPackageExample().catch(console.error);
+```
+
+## Example 15: Full Application
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+import { getFaucetHost, requestIotaFromFaucetV0 } from '@iota/iota-sdk/faucet';
+
+class IotaWallet {
+  private client: IotaClient;
+  private keypair: Ed25519Keypair;
+  private address: string;
+  
+  constructor(network: 'localnet' | 'devnet' | 'testnet' = 'testnet') {
+    this.client = new IotaClient({ url: getFullnodeUrl(network) });
+    this.keypair = new Ed25519Keypair();
+    this.address = this.keypair.getPublicKey().toIotaAddress();
+  }
+  
+  getAddress(): string {
+    return this.address;
+  }
+  
+  async getBalance(): Promise<string> {
+    const balance = await this.client.getBalance({ owner: this.address });
+    return balance.totalBalance;
+  }
+  
+  async requestFaucet(): Promise<void> {
+    await requestIotaFromFaucetV0({
+      host: getFaucetHost('testnet'),
+      recipient: this.address,
+    });
+  }
+  
+  async transfer(recipient: string, amount: number): Promise<string> {
+    const tx = new Transaction();
+    const [coin] = tx.splitCoins(tx.gas, [amount]);
+    tx.transferObjects([coin], recipient);
+    
+    const result = await this.client.signAndExecuteTransaction({
+      signer: this.keypair,
+      transaction: tx,
+    });
+    
+    return result.digest;
+  }
+  
+  async getTransactionHistory(limit = 10) {
+    const txs = await this.client.queryTransactions({
+      filter: { FromAddress: this.address },
+      options: { showEffects: true },
+      limit,
+    });
+    
+    return txs.data;
+  }
+}
+
+// Usage
+async function main() {
+  const wallet = new IotaWallet('testnet');
+  
+  console.log('Wallet address:', wallet.getAddress());
+  
+  // Request from faucet
+  console.log('Requesting tokens...');
+  await wallet.requestFaucet();
+  
+  // Wait for tokens
+  await new Promise(resolve => setTimeout(resolve, 5000));
+  
+  // Check balance
+  const balance = await wallet.getBalance();
+  console.log('Balance:', balance);
+  
+  // Transfer tokens
+  if (BigInt(balance) > 0) {
+    console.log('Transferring tokens...');
+    const digest = await wallet.transfer(wallet.getAddress(), 1000);
+    console.log('Transfer completed:', digest);
+  }
+  
+  // Get transaction history
+  const history = await wallet.getTransactionHistory();
+  console.log('Transaction history:', history.length, 'transactions');
+}
+
+main().catch(console.error);
+```
+
+## Running Examples
+
+### With TypeScript
+
+```bash
+# Install dependencies
+npm install @iota/iota-sdk typescript tsx
+
+# Run example
+npx tsx example.ts
+```
+
+### With JavaScript (Node.js)
+
+```bash
+# Install SDK
+npm install @iota/iota-sdk
+
+# Run example
+node example.js
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="./installation">
+    Install the SDK in your project
+  </Card>
+  <Card title="API Reference" icon="file-code" href="./api-reference">
+    Explore the complete API
+  </Card>
+  <Card title="Transactions" icon="exchange" href="./transactions">
+    Learn about transaction building
+  </Card>
+  <Card title="Client Setup" icon="gear" href="./client-setup">
+    Configure the IotaClient
+  </Card>
+</CardGroup>

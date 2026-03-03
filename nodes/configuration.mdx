@@ -1,0 +1,475 @@
+---
+title: Node Configuration Options
+description: Comprehensive guide to configuring IOTA nodes with all available settings and parameters.
+---
+
+The IOTA node is configured using a YAML file that defines network settings, database paths, API endpoints, and operational parameters.
+
+## Configuration File Location
+
+Specify the configuration file when starting the node:
+
+```bash
+iota-node --config-path /path/to/node.yaml
+```
+
+## Core Configuration
+
+### Key Pairs
+
+Nodes require several keypairs for different functions:
+
+```yaml
+# Authority keypair (validators only)
+authority-key-pair:
+  path: /path/to/authority.key
+  # OR embed directly (not recommended for production)
+  # value: "suiprivkey1..."
+
+# Protocol keypair for consensus (validators)
+protocol-key-pair:
+  path: /path/to/protocol.key
+
+# Network keypair for P2P connections
+network-key-pair:
+  path: /path/to/network.key
+
+# Account keypair
+account-key-pair:
+  path: /path/to/account.key
+```
+
+### Database Configuration
+
+```yaml
+# Main database path
+db-path: /var/lib/iota/db
+
+# Database checkpoint configuration
+db-checkpoint-config:
+  perform-db-checkpoints-at-epoch-end: false
+  checkpoint-path: /var/lib/iota/checkpoints
+  perform-index-db-checkpoints-at-epoch-end: false
+  prune-and-compact-before-upload: false
+```
+
+The database will create subdirectories:
+- `db-path/live` - Active database
+- `db-path/db_checkpoints` - Database checkpoints
+- `db-path/archive` - Archived data
+- `db-path/snapshot` - State snapshots
+
+### Network Configuration
+
+```yaml
+# gRPC network address (default: /ip4/0.0.0.0/tcp/8080)
+network-address: "/ip4/0.0.0.0/tcp/8080"
+
+# JSON-RPC address (default: 0.0.0.0:9000)
+json-rpc-address: "0.0.0.0:9000"
+
+# Prometheus metrics address (default: 0.0.0.0:9184)
+metrics-address: "0.0.0.0:9184"
+
+# Admin interface address (default: 127.0.0.1:1337)
+admin-interface-address: "127.0.0.1:1337"
+```
+
+## Genesis Configuration
+
+```yaml
+# Reference genesis file
+genesis-file-location: /path/to/genesis.blob
+
+# Optional: Migration transaction data
+migration-tx-data-path: /path/to/migration.blob
+```
+
+## API Configuration
+
+### JSON-RPC Server
+
+```yaml
+# Server type: http, websocket, or both
+jsonrpc-server-type: http
+
+# Enable REST API under /api/v1
+enable-rest-api: false
+
+# REST API configuration (if enabled)
+rest:
+  # REST-specific settings
+```
+
+### gRPC API
+
+```yaml
+# Enable gRPC API
+enable-grpc-api: true
+
+grpc-api-config:
+  # Bind address (default: 0.0.0.0:50051)
+  address: "0.0.0.0:50051"
+  
+  # Maximum message size in bytes (default: 128MB)
+  max-message-size-bytes: 134217728
+  
+  # Broadcast buffer size for streaming (default: 100)
+  broadcast-buffer-size: 100
+  
+  # Max JSON Move value size (default: 1MB)
+  max-json-move-value-size: 1048576
+  
+  # Optional TLS configuration
+  tls:
+    cert: /path/to/cert.pem
+    key: /path/to/key.pem
+```
+
+### gRPC Concurrency
+
+```yaml
+# Enable load shedding
+grpc-load-shed: false
+
+# Concurrency limit (default: 20000000000)
+grpc-concurrency-limit: 20000000000
+```
+
+## P2P Configuration
+
+```yaml
+p2p-config:
+  # P2P listen address (default: 0.0.0.0:8084)
+  listen-address: "0.0.0.0:8084"
+  
+  # External address other nodes use to connect
+  external-address: "/dns/node.example.com/tcp/8084"
+  
+  # Seed peers (preferred connections)
+  seed-peers:
+    - peer-id: "12D3KooW..."
+      address: "/ip4/192.168.1.100/tcp/8084"
+    - address: "/dns/seed.example.com/tcp/8084"
+  
+  # Excessive message size threshold (default: 32MB)
+  excessive-message-size: 33554432
+  
+  # State sync configuration
+  state-sync:
+    # Pinned checkpoints for fork prevention
+    pinned-checkpoints:
+      - [1000, "checkpoint_digest_hex"]
+      - [2000, "checkpoint_digest_hex"]
+    
+    # Query interval in milliseconds (default: 5000)
+    interval-period-ms: 5000
+    
+    # Mailbox capacity (default: 1024)
+    mailbox-capacity: 1024
+    
+    # Download concurrency settings
+    checkpoint-header-download-concurrency: 400
+    checkpoint-content-download-concurrency: 400
+    checkpoint-content-download-tx-concurrency: 50000
+    
+    # Timeouts in milliseconds
+    timeout-ms: 10000
+    checkpoint-content-timeout-ms: 60000
+  
+  # Discovery configuration
+  discovery:
+    # Interval in milliseconds (default: 10000)
+    interval-period-ms: 10000
+    
+    # Target concurrent connections (default: 4)
+    target-concurrent-connections: 4
+    
+    # Peers to query per interval (default: 1)
+    peers-to-query: 1
+    
+    # Access type: Public or Private
+    access-type: Public
+    
+    # Allowlisted peers
+    allowlisted-peers:
+      - peer-id: "12D3KooW..."
+        address: "/ip4/10.0.0.1/tcp/8084"
+    
+    # Address verification settings
+    max-concurrent-address-verifications: 10
+    address-verification-timeout-sec: 3
+    address-verification-total-timeout-sec: 8
+    address-verification-failure-cooldown-sec: 600
+    allow-private-addresses: false
+```
+
+## Consensus Configuration (Validators)
+
+```yaml
+consensus-config:
+  # Consensus database path
+  db-path: /var/lib/iota/consensus-db
+  
+  # Number of epochs to retain DBs (default: 0)
+  db-retention-epochs: 3
+  
+  # Pruner period in seconds (default: 3600)
+  db-pruner-period-secs: 3600
+  
+  # Max pending transactions (default: 20000)
+  max-pending-transactions: 20000
+  
+  # Max submit position
+  max-submit-position: 1000
+  
+  # Submit delay override in milliseconds
+  submit-delay-step-override-millis: 100
+  
+  # Mysticeti consensus parameters
+  parameters:
+    # Mysticeti-specific settings
+  
+  # OR Starfish consensus parameters
+  starfish-parameters:
+    # Starfish-specific settings
+```
+
+## Indexing Configuration
+
+```yaml
+# Enable index processing (full nodes)
+enable-index-processing: true
+
+# Maximum indexer subscriptions
+indexer-max-subscriptions: 100
+```
+
+## Storage Pruning
+
+```yaml
+authority-store-pruning-config:
+  # Number of epoch DBs to retain (default: 3)
+  num-latest-epoch-dbs-to-retain: 3
+  
+  # Pruning period in seconds (default: 3600)
+  epoch-db-pruning-period-secs: 3600
+  
+  # Epochs to retain for objects (0 = aggressive pruning)
+  num-epochs-to-retain: 0
+  
+  # Pruning batch sizes
+  max-checkpoints-in-batch: 10
+  max-transactions-in-batch: 1000
+  
+  # Periodic compaction threshold in days
+  periodic-compaction-threshold-days: 1
+  
+  # Epochs to retain for checkpoints
+  num-epochs-to-retain-for-checkpoints: 2
+  
+  # Enable smooth pruning
+  smooth: true
+  
+  # Enable compaction filter
+  enable-compaction-filter: false
+```
+
+## Checkpoint Executor
+
+```yaml
+checkpoint-executor-config:
+  # Max concurrent checkpoint execution (default: 40)
+  checkpoint-execution-max-concurrency: 40
+  
+  # Execution timeout in seconds (default: 30)
+  local-execution-timeout-sec: 30
+  
+  # Optional data ingestion directory
+  data-ingestion-dir: /var/lib/iota/ingestion
+```
+
+## Execution Cache
+
+```yaml
+# Cache type: writeback-cache or passthrough-cache
+execution-cache: writeback-cache
+
+execution-cache-config:
+  writeback-cache:
+    # Cache sizes
+    max-cache-size: 100000
+    package-cache-size: 1000
+    object-cache-size: 100000
+    transaction-cache-size: 100000
+    
+    # Backpressure thresholds
+    backpressure-threshold: 100000
+    backpressure-threshold-for-rpc: 100000
+```
+
+### Cache Environment Variables
+
+Cache sizes can be overridden with environment variables:
+
+- `IOTA_CACHE_WRITEBACK_SIZE_MAX`
+- `IOTA_CACHE_WRITEBACK_SIZE_PACKAGE`
+- `IOTA_CACHE_WRITEBACK_SIZE_OBJECT`
+- `IOTA_CACHE_WRITEBACK_SIZE_MARKER`
+- `IOTA_CACHE_WRITEBACK_SIZE_OBJECT_BY_ID`
+- `IOTA_CACHE_WRITEBACK_SIZE_TRANSACTION`
+- `IOTA_CACHE_WRITEBACK_SIZE_EXECUTED_EFFECT`
+- `IOTA_CACHE_WRITEBACK_SIZE_EFFECT`
+- `IOTA_CACHE_WRITEBACK_SIZE_EVENTS`
+- `IOTA_CACHE_WRITEBACK_SIZE_TRANSACTION_OBJECTS`
+- `IOTA_CACHE_WRITEBACK_BACKPRESSURE_THRESHOLD`
+- `IOTA_CACHE_WRITEBACK_BACKPRESSURE_THRESHOLD_FOR_RPC`
+- `DISABLE_WRITEBACK_CACHE` - Set to any value to use passthrough cache
+
+## Overload Protection
+
+```yaml
+authority-overload-config:
+  # Max transaction age in queue (default: 500ms)
+  max-txn-age-in-queue: 500ms
+  
+  # Overload monitoring interval (default: 10s)
+  overload-monitor-interval: 10s
+  
+  # Execution queue latency limits
+  execution-queue-latency-soft-limit: 1s
+  execution-queue-latency-hard-limit: 10s
+  
+  # Load shedding percentages
+  max-load-shedding-percentage: 95
+  min-load-shedding-percentage-above-hard-limit: 50
+  
+  # Safe transaction ready rate
+  safe-transaction-ready-rate: 100
+  
+  # Enable overload checks
+  check-system-overload-at-signing: true
+  check-system-overload-at-execution: false
+  
+  # Transaction manager queue limits
+  max-transaction-manager-queue-length: 100000
+  max-transaction-manager-per-object-queue-length: 20
+```
+
+## Safety Checks
+
+```yaml
+expensive-safety-check-config:
+  enable-epoch-iota-conservation-check: false
+  enable-deep-per-tx-iota-conservation-check: false
+  enable-state-consistency-check: false
+  enable-secondary-index-checks: false
+  force-disable-epoch-iota-conservation-check: false
+  force-disable-state-consistency-check: false
+```
+
+## Metrics
+
+```yaml
+metrics:
+  # Push interval in seconds
+  push-interval-seconds: 60
+  
+  # Push URL for metrics
+  push-url: "https://metrics.example.com/push"
+```
+
+## Transaction & Certificate Deny Lists
+
+```yaml
+# Transaction deny configuration
+transaction-deny-config:
+  # Add specific rules here
+
+# Certificate deny configuration  
+certificate-deny-config:
+  # Add specific certificate digests to deny
+```
+
+## State Archive & Snapshots
+
+```yaml
+# Archive write configuration
+state-archive-write-config:
+  object-store-config:
+    # Object storage settings (S3, GCS, etc.)
+  concurrency: 5
+  use-for-pruning-watermark: false
+
+# Archive read configuration (multiple sources supported)
+state-archive-read-config:
+  - object-store-config:
+      # Object storage settings
+    concurrency: 5
+    use-for-pruning-watermark: false
+
+# Snapshot configuration
+state-snapshot-write-config:
+  object-store-config:
+    # Object storage settings
+  concurrency: 5
+```
+
+## zkLogin Configuration
+
+```yaml
+# JWK fetch interval in seconds (default: 3600)
+jwk-fetch-interval-seconds: 3600
+
+# OAuth providers per chain
+zklogin-oauth-providers:
+  Mainnet:
+    - Google
+    - Facebook
+    - Twitch
+    - Apple
+  Testnet:
+    - Google
+    - Facebook
+```
+
+## Advanced Settings
+
+```yaml
+# Enable validator transaction finalizer (default: true)
+enable-validator-tx-finalizer: true
+
+# Enable database write stall
+enable-db-write-stall: true  # for validators
+# enable-db-write-stall: false  # for fullnodes
+
+# Transaction key-value store
+transaction-kv-store-read-config:
+  base-url: ""
+  cache-size: 100000
+```
+
+## Example Configurations
+
+### Minimal Full Node
+
+```yaml
+db-path: /var/lib/iota/db
+network-address: "/ip4/0.0.0.0/tcp/8080"
+json-rpc-address: "0.0.0.0:9000"
+metrics-address: "0.0.0.0:9184"
+genesis-file-location: /etc/iota/genesis.blob
+enable-index-processing: true
+
+p2p-config:
+  listen-address: "0.0.0.0:8084"
+```
+
+### Production Validator
+
+See the complete example in [Running a Validator](/nodes/run-validator).
+
+## Next Steps
+
+- [Monitor your node](/nodes/monitoring) with Prometheus metrics
+- [Troubleshoot issues](/nodes/troubleshooting) with common problems

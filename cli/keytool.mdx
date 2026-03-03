@@ -1,0 +1,678 @@
+---
+title: "Key Management Commands"
+description: "Complete reference for managing cryptographic keys, addresses, and signatures with IOTA keytool"
+---
+
+The `iota keytool` command provides tools for key management, signing, and cryptographic operations.
+
+## Basic Usage
+
+```bash
+iota keytool [OPTIONS] [SUBCOMMAND]
+```
+
+### Global Options
+
+- `--keystore-path <PATH>` - Custom keystore file location
+- `--json` - Output results in JSON format
+
+## Key Generation
+
+### generate
+
+Generate a new keypair and save to file:
+
+```bash
+iota keytool generate <KEY_SCHEME> [OPTIONS]
+```
+
+#### Arguments
+
+- `<KEY_SCHEME>` - Signature scheme:
+  - `ed25519` - EdDSA on Curve25519 (recommended)
+  - `secp256k1` - ECDSA on secp256k1 (Bitcoin/Ethereum)
+  - `secp256r1` - ECDSA on secp256r1 (NIST P-256)
+  - `bls12381` - BLS on BLS12-381 (for validators)
+
+#### Options
+
+- `--derivation-path <PATH>` - BIP-32 derivation path
+- `--word-length <LENGTH>` - Mnemonic length: `word12`, `word15`, `word18`, `word21`, `word24`
+
+#### Examples
+
+<Steps>
+  <Step title="Generate Ed25519 key">
+    ```bash
+    iota keytool generate ed25519
+    ```
+    
+    Output:
+    ```
+    Keys saved to: 0x1234567890abcdef1234567890abcdef12345678.key
+    
+    ╭───────────────────────────────────────────────────────────╮
+    │ IOTA Address  : 0x1234567890abcdef1234567890abcdef12345678  │
+    │ Public Key    : AQEDAgQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxw=      │
+    │ Key Scheme    : ed25519                                      │
+    │ Mnemonic      : word1 word2 word3 ... word12                │
+    ╰───────────────────────────────────────────────────────────╯
+    ```
+    
+    <Warning>
+      Save the mnemonic phrase securely. The key file contains the private key.
+    </Warning>
+  </Step>
+
+  <Step title="Generate with custom derivation path">
+    ```bash
+    iota keytool generate ed25519 \
+      --derivation-path "m/44'/4218'/0'/0'/1'"
+    ```
+    
+    This generates the second account (index 1) in the derivation hierarchy.
+  </Step>
+
+  <Step title="Generate 24-word mnemonic">
+    ```bash
+    iota keytool generate ed25519 --word-length word24
+    ```
+  </Step>
+
+  <Step title="Generate validator key">
+    ```bash
+    iota keytool generate bls12381
+    ```
+    
+    Output:
+    ```
+    Keys saved to: bls-0x1234...5678.key
+    ```
+  </Step>
+</Steps>
+
+#### Default Derivation Paths
+
+- Ed25519: `m/44'/4218'/0'/0'/0'`
+- Secp256k1: `m/54'/4218'/0'/0/0`
+- Secp256r1: `m/74'/4218'/0'/0/0`
+
+## Key Import
+
+### import
+
+Import a key into the keystore:
+
+```bash
+iota keytool import [OPTIONS] <INPUT_STRING> <KEY_SCHEME>
+```
+
+#### Arguments
+
+- `<INPUT_STRING>` - One of:
+  - Mnemonic phrase (12/15/18/21/24 words)
+  - Bech32-encoded private key (starts with `iotaprivkey`)
+  - Hex-encoded seed (64 bytes)
+- `<KEY_SCHEME>` - Signature scheme
+- `<DERIVATION_PATH>` - Optional derivation path
+
+#### Options
+
+- `--alias <ALIAS>` - Set an alias for the address
+
+#### Examples
+
+<Steps>
+  <Step title="Import from mnemonic">
+    ```bash
+    iota keytool import \
+      "word1 word2 word3 ... word12" \
+      ed25519 \
+      --alias my-wallet
+    ```
+    
+    Output:
+    ```
+    Imported key for address: 0x1234...
+    Alias: my-wallet
+    ```
+  </Step>
+
+  <Step title="Import from Bech32 private key">
+    ```bash
+    iota keytool import \
+      "iotaprivkey1qp4..." \
+      ed25519
+    ```
+  </Step>
+
+  <Step title="Import with custom derivation">
+    ```bash
+    iota keytool import \
+      "word1 word2 ... word12" \
+      ed25519 \
+      "m/44'/4218'/0'/0'/5'"
+    ```
+  </Step>
+</Steps>
+
+### import-ledger
+
+Import a key from Ledger hardware wallet:
+
+```bash
+iota keytool import-ledger [OPTIONS] [DERIVATION_PATH]
+```
+
+#### Options
+
+- `--alias <ALIAS>` - Set an alias
+- `<DERIVATION_PATH>` - Derivation path (default: `m/44'/4218'/0'/0'/0'`)
+
+#### Example
+
+```bash
+iota keytool import-ledger --alias ledger-wallet
+```
+
+<Note>
+  Ensure the IOTA app is open on your Ledger device.
+</Note>
+
+## Key Management
+
+### list
+
+List all keys in the keystore:
+
+```bash
+iota keytool list [--sort-by-alias]
+```
+
+#### Options
+
+- `-s, --sort-by-alias` - Sort by alias instead of address
+
+#### Output
+
+```
+╭──────────┬───────────────────────────────────┬─────────────┬────────────────────────────────╮
+│ Alias    │ IOTA Address                     │ Key Scheme │ Public Key (Base64)            │
+├──────────┼───────────────────────────────────┼─────────────┼────────────────────────────────┤
+│ alice    │ 0x1234...5678                    │ ed25519    │ AQED...                        │
+│ bob      │ 0xabcd...ef01                    │ secp256k1  │ AgME...                        │
+│ ledger-1 │ 0x9876...5432                    │ ed25519    │ BAUG...                        │
+╰──────────┴───────────────────────────────────┴─────────────┴────────────────────────────────╯
+```
+
+### export
+
+Export a private key:
+
+```bash
+iota keytool export <KEY_IDENTITY>
+```
+
+#### Arguments
+
+- `<KEY_IDENTITY>` - Address or alias
+
+#### Example
+
+```bash
+iota keytool export alice
+```
+
+Output:
+```
+╭───────────────────────────────────────────────────────────────────╮
+│ Exported Private Key                                            │
+├───────────────────────────────────────────────────────────────────┤
+│ iotaprivkey1qp4f...                                              │
+╰───────────────────────────────────────────────────────────────────╯
+```
+
+<Warning>
+  Never share your private key. Anyone with this key can control your assets.
+</Warning>
+
+### show
+
+Display key information from a file:
+
+```bash
+iota keytool show <FILE>
+```
+
+#### Example
+
+```bash
+iota keytool show 0x1234...5678.key
+```
+
+### update-alias
+
+Update an address alias:
+
+```bash
+iota keytool update-alias <KEY_IDENTITY> [NEW_ALIAS]
+```
+
+#### Example
+
+```bash
+iota keytool update-alias alice my-new-alias
+```
+
+If `NEW_ALIAS` is not provided, a random alias is generated.
+
+## Signing Operations
+
+### sign
+
+Sign transaction data:
+
+```bash
+iota keytool sign [OPTIONS]
+```
+
+#### Options
+
+- `--address <ADDRESS>` - Signer address or alias (required)
+- `--data <BASE64>` - Base64-encoded transaction data (required)
+- `--intent <INTENT>` - Intent scope (optional)
+
+#### Example
+
+```bash
+iota keytool sign \
+  --address alice \
+  --data AAA... \
+  --intent transaction
+```
+
+Output:
+```json
+{
+  "iotaAddress": "0x1234...",
+  "rawTxData": "AAA...",
+  "intent": "transaction",
+  "rawIntentMsg": "BBB...",
+  "digest": "CCC...",
+  "iotaSignature": "AQEDAgQF..."
+}
+```
+
+### sign-raw
+
+Sign raw bytes directly:
+
+```bash
+iota keytool sign-raw [OPTIONS]
+```
+
+#### Options
+
+- `--address <ADDRESS>` - Signer address or alias (required)
+- `--data <HEX>` - Hex-encoded data to sign (required)
+
+#### Example
+
+```bash
+iota keytool sign-raw \
+  --address alice \
+  --data 0x48656c6c6f20576f726c64
+```
+
+Output:
+```json
+{
+  "iotaAddress": "0x1234...",
+  "rawData": "0x48656c6c6f20576f726c64",
+  "publicKey": "AQED...",
+  "publicKeyHex": "0x010203...",
+  "signatureHex": "0xabcdef...",
+  "iotaSignature": "AQEDAgQF..."
+}
+```
+
+### sign-kms
+
+Sign using AWS KMS:
+
+```bash
+iota keytool sign-kms [OPTIONS]
+```
+
+#### Options
+
+- `--data <BASE64>` - Transaction data (required)
+- `--keyid <ID>` - AWS KMS key ID (required)
+- `--base64pk <KEY>` - Base64 public key (required)
+- `--intent <INTENT>` - Intent scope (optional)
+
+#### Example
+
+```bash
+iota keytool sign-kms \
+  --data AAA... \
+  --keyid arn:aws:kms:us-east-1:123456789012:key/abc... \
+  --base64pk AQED...
+```
+
+## Decoding & Verification
+
+### decode-sig
+
+Decode a signature:
+
+```bash
+iota keytool decode-sig <SIGNATURE>
+```
+
+#### Example
+
+```bash
+iota keytool decode-sig AQEDAgQF...
+```
+
+Output:
+```json
+{
+  "scheme": "ED25519",
+  "publicKeyBase64": "AQED...",
+  "address": "0x1234...",
+  "signatureHex": "0xabcdef..."
+}
+```
+
+### decode-or-verify-tx
+
+Decode and optionally verify a transaction:
+
+```bash
+iota keytool decode-or-verify-tx [OPTIONS]
+```
+
+#### Options
+
+- `--tx-bytes <BASE64>` - Transaction bytes (required)
+- `--sig <SIGNATURE>` - Signature to verify (optional)
+- `--cur-epoch <EPOCH>` - Current epoch (default: 0)
+
+#### Examples
+
+<Steps>
+  <Step title="Decode transaction">
+    ```bash
+    iota keytool decode-or-verify-tx --tx-bytes AAA...
+    ```
+    
+    Output:
+    ```json
+    {
+      "tx": {
+        "sender": "0x1234...",
+        "gasData": {...},
+        "kind": {...}
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Decode and verify">
+    ```bash
+    iota keytool decode-or-verify-tx \
+      --tx-bytes AAA... \
+      --sig AQEDAgQF...
+    ```
+    
+    Output includes verification result:
+    ```json
+    {
+      "tx": {...},
+      "result": "Ok"
+    }
+    ```
+  </Step>
+</Steps>
+
+### decode-multi-sig
+
+Decode a MultiSig signature:
+
+```bash
+iota keytool decode-multi-sig [OPTIONS]
+```
+
+#### Options
+
+- `--multisig <MULTISIG>` - MultiSig signature (required)
+- `--tx-bytes <BASE64>` - Transaction bytes to verify (optional)
+- `--cur-epoch <EPOCH>` - Current epoch (default: 0)
+
+#### Example
+
+```bash
+iota keytool decode-multi-sig --multisig AwED...
+```
+
+### convert
+
+Convert private key formats:
+
+```bash
+iota keytool convert <VALUE>
+```
+
+#### Arguments
+
+- `<VALUE>` - Private key in hex or base64 format
+
+#### Example
+
+```bash
+iota keytool convert 0x1234...
+```
+
+Output:
+```json
+{
+  "bech32WithFlag": "iotaprivkey1qp4f...",
+  "base64WithFlag": "AQED...",
+  "scheme": "ED25519"
+}
+```
+
+## MultiSig Operations
+
+### multisig-address
+
+Generate a MultiSig address:
+
+```bash
+iota keytool multisig-address [OPTIONS]
+```
+
+#### Options
+
+- `--threshold <N>` - Signature threshold (required)
+- `--pks <KEY>...` - Public keys (required)
+- `--weights <WEIGHT>...` - Key weights (required)
+
+#### Example
+
+```bash
+iota keytool multisig-address \
+  --threshold 2 \
+  --pks AQED... AgME... AwQF... \
+  --weights 1 1 1
+```
+
+Output:
+```json
+{
+  "multisigAddress": "0xabcd...",
+  "multisig": [
+    {
+      "address": "0x1234...",
+      "publicBase64KeyWithFlag": "AQED...",
+      "weight": 1
+    },
+    {
+      "address": "0x5678...",
+      "publicBase64KeyWithFlag": "AgME...",
+      "weight": 1
+    },
+    {
+      "address": "0x9abc...",
+      "publicBase64KeyWithFlag": "AwQF...",
+      "weight": 1
+    }
+  ],
+  "threshold": 2
+}
+```
+
+### multisig-combine-partial-sig
+
+Combine partial signatures into a MultiSig:
+
+```bash
+iota keytool multisig-combine-partial-sig [OPTIONS]
+```
+
+#### Options
+
+- `--sigs <SIG>...` - Individual signatures (required)
+- `--pks <KEY>...` - Public keys (required)
+- `--weights <WEIGHT>...` - Key weights (required)
+- `--threshold <N>` - Signature threshold (required)
+
+#### Example
+
+```bash
+iota keytool multisig-combine-partial-sig \
+  --sigs AQED... AgME... \
+  --pks AQED... AgME... AwQF... \
+  --weights 1 1 1 \
+  --threshold 2
+```
+
+Output:
+```json
+{
+  "multisigAddress": "0xabcd...",
+  "multisigParsed": {...},
+  "multisigSerialized": "AwED..."
+}
+```
+
+## Utility Commands
+
+### tx-digest
+
+Compute transaction digest:
+
+```bash
+iota keytool tx-digest <TX_BYTES>
+```
+
+#### Example
+
+```bash
+iota keytool tx-digest AAA...
+```
+
+Output:
+```json
+{
+  "digest": "5KzKVq7qP2xH8FwkQJqxhPNBjkFVjM3xZoJpP5KwqAkH",
+  "digestHex": "0x4a1b2c3d...",
+  "signingDigestHex": "0x5e6f7a8b..."
+}
+```
+
+## Security Best Practices
+
+### Keystore Security
+
+1. **Protect keystore file**:
+   ```bash
+   chmod 600 ~/.iota/iota_config/iota.keystore
+   ```
+
+2. **Backup your keystore**:
+   ```bash
+   cp ~/.iota/iota_config/iota.keystore /secure/backup/location/
+   ```
+
+3. **Use hardware wallets** for high-value accounts:
+   ```bash
+   iota keytool import-ledger --alias secure-wallet
+   ```
+
+### Key Management
+
+1. **Never share private keys** or mnemonic phrases
+2. **Use different keys** for different purposes (testing vs. production)
+3. **Rotate keys periodically** for high-security applications
+4. **Use MultiSig** for shared accounts or high-value assets
+5. **Test on testnet** before mainnet operations
+
+### Signing Practices
+
+1. **Verify transaction details** before signing
+2. **Use hardware wallets** for production transactions
+3. **Keep software updated** to the latest version
+4. **Use secure environments** (no malware, encrypted disk)
+
+## Troubleshooting
+
+### Import Issues
+
+**Error**: `Invalid mnemonic`
+
+Ensure mnemonic has the correct word count:
+```bash
+# Count words
+echo "word1 word2 ..." | wc -w
+```
+
+**Error**: `Invalid private key format`
+
+Convert to Bech32 format:
+```bash
+iota keytool convert 0x1234...
+```
+
+### Signing Issues
+
+**Error**: `Address not found in keystore`
+
+List addresses:
+```bash
+iota keytool list
+```
+
+**Error**: `Ledger device not found`
+
+Check connection:
+```bash
+# Linux: Check permissions
+sudo usermod -aG plugdev $USER
+
+# Verify IOTA app is open on device
+iota keytool import-ledger
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Client Commands" icon="terminal" href="/cli/client-commands">
+    Use your keys to interact with the network
+  </Card>
+  <Card title="Testing" icon="flask" href="/cli/testing">
+    Test key operations locally
+  </Card>
+</CardGroup>

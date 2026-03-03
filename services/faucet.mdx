@@ -1,0 +1,412 @@
+---
+title: Faucet Service
+description: Running the IOTA Faucet service for distributing testnet tokens
+---
+
+# IOTA Faucet
+
+The IOTA Faucet service distributes testnet tokens to developers for testing and development purposes.
+
+## Overview
+
+The faucet provides:
+- **HTTP API** for requesting test tokens
+- **Rate limiting** to prevent abuse
+- **Batch processing** for efficient token distribution
+- **Write-Ahead Log (WAL)** for reliability
+- **Prometheus metrics** for monitoring
+
+## Architecture
+
+The faucet consists of:
+
+1. **SimpleFaucet**: Core faucet logic managing gas coin pool
+2. **HTTP Server**: Axum-based REST API
+3. **Batch Transfer Task**: Background worker for batch requests
+4. **Write-Ahead Log**: Persistent transaction log for reliability
+
+## Configuration
+
+The faucet is configured via command-line arguments:
+
+```bash
+cargo run --bin iota-faucet -- [OPTIONS]
+```
+
+### Command-line Options
+
+#### Network Configuration
+
+- `--port <PORT>`: Server port (default: `5003`)
+- `--host-ip <IP>`: Server host IP (default: `127.0.0.1`)
+
+#### Token Distribution
+
+- `--amount <AMOUNT>`: Amount per coin in nanoIOTA (default: varies by network)
+- `--num-coins <NUM>`: Number of coins per request (default: varies)
+
+#### Performance & Limits
+
+- `--request-buffer-size <SIZE>`: Request buffer size (default: `10`)
+- `--max-request-per-second <NUM>`: Max requests per second (default: `10`)
+- `--max-request-queue-length <NUM>`: Max queue length (default: `10000`)
+- `--batch-request-size <NUM>`: Batch size for processing (default: `500`)
+
+#### Rate Limiting
+
+- `--enable-rate-limiting`: Enable rate limiting (default: `false`)
+- `--max-requests-per-window <NUM>`: Max requests per window (default: `12`)
+- `--rate-window-secs <SECS>`: Rate limit window in seconds (default: `43200` = 12 hours)
+
+#### Reliability
+
+- `--write-ahead-log <PATH>`: Path to WAL file (required)
+- `--wal-retry-interval <SECS>`: WAL retry interval (default: `300` seconds)
+- `--ttl-expiration <SECS>`: Task cache TTL (default: `300` seconds)
+
+#### Wallet Configuration
+
+- `--wallet-client-timeout-secs <SECS>`: Wallet client timeout (default: `60`)
+
+#### Batch Mode
+
+- `--batch-enabled`: Enable batch processing (default: `false`)
+
+### Environment Variables
+
+- `MAX_CONCURRENCY`: Override default concurrency limit (default: `30`)
+
+## Running the Faucet
+
+### Prerequisites
+
+1. **IOTA Wallet Configuration**: Create wallet with funded address
+   - Located at `~/.iota/iota_config/client.yaml` by default
+   - Must have sufficient IOTA tokens for distribution
+
+2. **Write-Ahead Log Directory**: Create directory for WAL
+   ```bash
+   mkdir -p /tmp/faucet-wal
+   ```
+
+### Basic Setup
+
+Start the faucet with default configuration:
+
+```bash
+cargo run --bin iota-faucet -- \
+  --write-ahead-log /tmp/faucet-wal/faucet.wal
+```
+
+### Production Configuration
+
+For production use with rate limiting:
+
+```bash
+cargo run --bin iota-faucet -- \
+  --port 5003 \
+  --host-ip 0.0.0.0 \
+  --write-ahead-log /var/lib/iota/faucet.wal \
+  --enable-rate-limiting \
+  --max-requests-per-window 12 \
+  --rate-window-secs 43200 \
+  --batch-enabled \
+  --max-request-per-second 100
+```
+
+### With Custom Token Amounts
+
+```bash
+cargo run --bin iota-faucet -- \
+  --amount 100000000000 \
+  --num-coins 5 \
+  --write-ahead-log /tmp/faucet.wal
+```
+
+## API Endpoints
+
+### Health Check
+
+```bash
+GET /
+```
+
+Returns `OK` if the faucet is running.
+
+**Example:**
+```bash
+curl http://localhost:5003/
+```
+
+### Request Gas (Legacy)
+
+```bash
+POST /gas
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "FixedAmountRequest": {
+    "recipient": "0x..."
+  }
+}
+```
+
+**Response (Success):**
+```json
+{
+  "transferred_gas_objects": {
+    "sent": [
+      {
+        "id": "0x...",
+        "transfer_tx_digest": "...",
+        "amount": 100000000000
+      }
+    ]
+  }
+}
+```
+
+**Example:**
+```bash
+curl -X POST http://localhost:5003/gas \
+  -H "Content-Type: application/json" \
+  -d '{
+    "FixedAmountRequest": {
+      "recipient": "0x742d35cc6634c0532925a3b844bc9c7eb6fb32f1"
+    }
+  }'
+```
+
+### Batch Request Gas (v1)
+
+```bash
+POST /v1/gas
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "FixedAmountRequest": {
+    "recipient": "0x..."
+  }
+}
+```
+
+**Response (Accepted):**
+```json
+{
+  "task": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**Example:**
+```bash
+curl -X POST http://localhost:5003/v1/gas \
+  -H "Content-Type: application/json" \
+  -d '{
+    "FixedAmountRequest": {
+      "recipient": "0x742d35cc6634c0532925a3b844bc9c7eb6fb32f1"
+    }
+  }'
+```
+
+### Check Request Status
+
+```bash
+GET /v1/status/{task_id}
+```
+
+**Response (In Progress):**
+```json
+{
+  "status": "INPROGRESS"
+}
+```
+
+**Response (Succeeded):**
+```json
+{
+  "status": "SUCCEEDED",
+  "transferred_gas_objects": {
+    "sent": [
+      {
+        "id": "0x...",
+        "transfer_tx_digest": "...",
+        "amount": 100000000000
+      }
+    ]
+  }
+}
+```
+
+**Example:**
+```bash
+curl http://localhost:5003/v1/status/550e8400-e29b-41d4-a716-446655440000
+```
+
+## Rate Limiting
+
+When enabled, rate limiting prevents abuse:
+
+### Configuration
+
+- **Window Duration**: Time window for counting requests (e.g., 12 hours)
+- **Max Requests**: Maximum requests per address in the window
+- **Tracked Addresses**: Up to 100,000 addresses tracked simultaneously
+
+### Behavior
+
+1. Tracks requests per recipient address
+2. Removes expired entries from tracking
+3. Returns `503 Service Unavailable` when limit exceeded
+4. Old requests automatically age out after window expires
+
+### Example Error Response
+
+```json
+{
+  "error": "Queue is full, please try again later"
+}
+```
+
+## Batch Processing
+
+Batch mode improves efficiency by grouping multiple requests:
+
+### Benefits
+
+- Reduced transaction overhead
+- Lower gas costs
+- Higher throughput
+
+### Configuration
+
+```bash
+--batch-enabled \
+--batch-request-size 500
+```
+
+### How It Works
+
+1. Requests are queued in memory
+2. Background task gathers up to `batch-request-size` requests
+3. Single transaction transfers tokens to multiple recipients
+4. Status tracked via task ID
+
+## Write-Ahead Log (WAL)
+
+The WAL ensures reliability:
+
+### Purpose
+
+- Records pending transactions before execution
+- Enables retry after faucet restart
+- Prevents token loss on failure
+
+### Behavior
+
+1. Transaction written to WAL before sending
+2. WAL entry removed on success
+3. Failed transactions remain in WAL
+4. WAL retried periodically (default: every 300 seconds)
+
+### Manual WAL Retry
+
+The faucet automatically retries WAL entries, but you can also:
+
+1. Stop the faucet
+2. Fix any issues (network, wallet, etc.)
+3. Restart the faucet - WAL entries are retried on startup
+
+## Monitoring
+
+Prometheus metrics exposed on port `9184`:
+
+### Key Metrics
+
+- `faucet_total_requests`: Total requests received
+- `faucet_total_successful`: Successful token transfers
+- `faucet_total_failed`: Failed transfers
+- `faucet_available_coins`: Available gas coins in pool
+- `faucet_discarded_coins`: Coins removed from pool
+- `faucet_current_executions`: In-flight transactions
+
+### Access Metrics
+
+```bash
+curl http://localhost:9184/metrics
+```
+
+## Error Handling
+
+### Common Errors
+
+**No Gas Coins Available**
+```json
+{
+  "error": "No gas coin available"
+}
+```
+
+**Solution**: Fund the faucet wallet with more IOTA tokens
+
+**Queue Full**
+```json
+{
+  "error": "Queue is full, please try again later"
+}
+```
+
+**Solution**: Wait and retry, or increase queue size
+
+**Rate Limited**
+```json
+{
+  "error": "Rate limit exceeded"
+}
+```
+
+**Solution**: Wait for rate limit window to expire
+
+## Security Considerations
+
+1. **Testnet Only**: Never run faucet on mainnet
+2. **Rate Limiting**: Always enable for public faucets
+3. **CORS**: Configure CORS appropriately for your use case
+4. **Monitoring**: Monitor metrics for abuse patterns
+5. **Wallet Security**: Protect wallet configuration and keys
+
+## Best Practices
+
+1. **Enable Rate Limiting**: Prevent abuse on public faucets
+2. **Use Batch Mode**: Improve efficiency for high traffic
+3. **Monitor Metrics**: Track usage and performance
+4. **Regular WAL Cleanup**: Monitor WAL size
+5. **Sufficient Funds**: Maintain adequate balance in faucet wallet
+6. **Backup WAL**: Backup WAL file periodically
+
+## Troubleshooting
+
+### Faucet Won't Start
+
+- Verify wallet configuration exists
+- Check wallet has funded address
+- Ensure WAL directory is writable
+
+### No Tokens Distributed
+
+- Check wallet balance
+- Verify network connectivity to fullnode
+- Review logs for errors
+- Check WAL for stuck transactions
+
+### High Error Rate
+
+- Monitor metrics at `:9184/metrics`
+- Check fullnode connectivity
+- Review gas coin pool size
+- Check for insufficient balance

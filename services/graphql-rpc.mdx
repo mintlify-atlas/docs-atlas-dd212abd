@@ -1,0 +1,296 @@
+---
+title: GraphQL RPC Service
+description: Running and using the IOTA GraphQL RPC service for querying blockchain data
+---
+
+# IOTA GraphQL RPC
+
+The GraphQL server provides read access to the Indexer database and enables transaction execution through the fullnode JSON-RPC API.
+
+## Architecture
+
+The GraphQL server acts as a bridge between:
+- **Indexer Database**: For querying historical and indexed data
+- **Fullnode JSON-RPC API**: For transaction execution
+
+```
+┌─────────────┐
+│   Clients   │
+└──────┬──────┘
+       │
+       ↓
+┌─────────────────┐
+│  GraphQL Server │
+└────┬────────┬───┘
+     │        │
+     ↓        ↓
+┌────────┐ ┌─────────┐
+│  Index │ │Fullnode │
+│   DB   │ │JSON-RPC │
+└────────┘ └─────────┘
+```
+
+## Key Features
+
+- Built with [async-graphql](https://async-graphql.github.io/async-graphql/en/index.html)
+- Automatically generated schema from Rust types
+- Interactive GraphiQL IDE for exploring the API
+- Query and Mutation support
+
+### Query Type
+
+Handles all data fetching operations:
+- Objects, owners, coins, events
+- Transaction blocks
+- Move packages
+- Checkpoints and protocol information
+- Dry run (simulation) of transactions
+
+### Mutation Type
+
+Handles data modification:
+- Execute transaction blocks
+- Submit transactions to fullnode
+
+## GraphQL vs JSON-RPC Mapping
+
+| JSON-RPC API | GraphQL Equivalent |
+|--------------|-------------------|
+| `CoinApi` | `Query::coins`, `Query::coin_metadata` |
+| `GovernanceApi` | `Query::epoch` |
+| `MoveUtilsApi` | `Query::type_` |
+| `ReadApi` | `Query::transaction_block`, `Query::objects`, etc. |
+| `ExtendedApi` | `Query::epoch`, `Query::objects`, `Query::transaction_blocks` |
+| `IndexerApi` | `Query::object`, `Object::events`, etc. |
+| `WriteApi` | `Mutation::execute_transaction_block`, `Query::dry_run_transaction_block` |
+
+## Prerequisites
+
+Before running the GraphQL server, you need:
+
+1. **Running Indexer database** (PostgreSQL)
+   - Follow the [Indexer database setup](/services/indexer#database-setup)
+   - Default: PostgreSQL on port `5432` with database `iota_indexer`
+
+2. **Fullnode** (optional, for transaction execution)
+   - Required only if you need transaction execution capabilities
+
+## Running the GraphQL Server
+
+### Using Docker Compose (Recommended)
+
+See [pg-services-local](../../dev-tools/pg-services-local/README.md) which automatically sets up:
+- GraphQL server
+- Indexer instance
+- PostgreSQL database
+- Local network
+
+### Manual Setup
+
+#### Basic Launch
+
+Start the server with default configuration:
+
+```bash
+cargo run --bin iota-graphql-rpc start-server
+```
+
+The server will be available at: `http://127.0.0.1:8000`
+
+#### Custom Configuration
+
+Specify database URL, node RPC URL, and server address:
+
+```bash
+cargo run --bin iota-graphql-rpc start-server \
+  --db-url "postgres://postgres:postgrespw@localhost/iota_indexer" \
+  --node-rpc-url "http://localhost:9000" \
+  --host "127.0.0.1" \
+  --port 8000
+```
+
+**Command-line Options:**
+- `--db-url`: PostgreSQL database connection URL
+- `--node-rpc-url`: Fullnode RPC URL for transaction execution
+- `--host`: Server host address (default: `127.0.0.1`)
+- `--port`: Server port (default: `8000`)
+- `--config`: Path to TOML configuration file
+
+### Advanced Configuration
+
+Use a TOML configuration file for fine-grained control:
+
+```toml
+[limits]
+max-query-depth = 15
+max-query-nodes = 500
+max-output-nodes = 100000
+max-query-payload-size = 5000
+max-db-query-cost = 20000
+default-page-size = 5
+max-page-size = 10
+request-timeout-ms = 15000
+max-type-argument-depth = 16
+max-type-argument-width = 32
+max-type-nodes = 256
+max-move-value-depth = 128
+
+[background-tasks]
+watermark-update-ms = 500
+```
+
+Load the config file:
+
+```bash
+cargo run --bin iota-graphql-rpc start-server --config config.toml
+```
+
+See `ServiceConfig` in [config.rs](https://github.com/iotaledger/iota/blob/develop/crates/iota-graphql-rpc/src/config.rs) for all available options.
+
+## Using GraphiQL IDE
+
+Access the interactive GraphiQL IDE at: `http://127.0.0.1:8000`
+
+### Example Query
+
+Test the server with this simple query:
+
+```graphql
+# Returns the chain identifier for the chain that the server is tracking
+{
+  chainIdentifier
+}
+```
+
+### More Examples
+
+Find additional query examples in the [examples directory](https://github.com/iotaledger/iota/tree/develop/crates/iota-graphql-rpc/examples).
+
+## Running with Indexer
+
+For local development, you may want to run both the Indexer (to populate data) and GraphQL server:
+
+### Using `iota start` Subcommand
+
+From the repository root:
+
+```bash
+cargo run --features indexer --bin iota start \
+  --with-indexer \
+  --pg-port 5432 \
+  --pg-db-name iota_indexer \
+  --with-graphql=0.0.0.0:8000
+```
+
+This starts:
+- Local IOTA network
+- Indexer Sync worker
+- GraphQL server on `0.0.0.0:8000`
+
+### Standalone Indexer
+
+See [Indexer standalone setup](/services/indexer#standalone-indexer-setup) to run the Indexer separately.
+
+## Development Setup
+
+For VS Code users, update `.vscode/settings.json` with the Diesel backend feature:
+
+```json
+{
+  "rust-analyzer.cargo.features": ["pg_backend"]
+}
+```
+
+## Running Tests
+
+### Prerequisites
+
+Start a PostgreSQL test database:
+
+```bash
+# Follow Indexer database setup
+# See: /services/indexer#database-setup
+```
+
+### Run Server Tests
+
+```bash
+cargo nextest run -p iota-graphql-rpc \
+  --features pg_integration \
+  --no-fail-fast \
+  --test-threads 1
+```
+
+### Test GraphQL-JSON-RPC Compatibility
+
+```bash
+pnpm --filter @iota/graphql-transport test:e2e
+```
+
+## Regenerating GraphQL Schema
+
+After code changes, regenerate the schema:
+
+```bash
+cargo run --bin iota-graphql-rpc generate-schema
+```
+
+If snapshot tests fail:
+
+```bash
+# Run snapshot test
+cargo nextest run -p iota-graphql-rpc -- test_schema_sdl_export
+
+# Review and accept changes
+cargo insta review
+```
+
+## Environment Variables
+
+The GraphQL server respects standard PostgreSQL environment variables:
+- `PGHOST`: Database host
+- `PGPORT`: Database port  
+- `PGUSER`: Database user
+- `PGPASSWORD`: Database password
+- `PGDATABASE`: Database name
+
+## Connection Examples
+
+### Using cURL
+
+```bash
+curl -X POST http://127.0.0.1:8000 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "{ chainIdentifier }"
+  }'
+```
+
+### Using JavaScript/TypeScript
+
+```typescript
+import { GraphQLClient } from 'graphql-request';
+
+const client = new GraphQLClient('http://127.0.0.1:8000');
+
+const query = `
+  {
+    chainIdentifier
+  }
+`;
+
+const data = await client.request(query);
+console.log(data);
+```
+
+### Using Python
+
+```python
+import requests
+
+url = 'http://127.0.0.1:8000'
+query = '{ chainIdentifier }'
+
+response = requests.post(url, json={'query': query})
+print(response.json())
+```

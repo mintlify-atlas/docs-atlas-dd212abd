@@ -1,0 +1,441 @@
+---
+title: Using the IOTA Move framework
+description: Explore the IOTA Move framework's built-in modules for objects, transfers, collections, and more to build powerful smart contracts.
+---
+
+The IOTA Move framework provides a comprehensive set of modules for building smart contracts on IOTA. These modules handle common blockchain operations like object management, transfers, and data structures.
+
+## Framework structure
+
+The IOTA framework is organized into several packages:
+
+- **iota-framework**: Core modules for objects, transfers, and blockchain primitives
+- **iota-system**: System-level functionality and governance
+- **move-stdlib**: Standard Move library with common utilities
+
+## Core modules
+
+### Object module
+
+The `iota::object` module manages unique object identifiers:
+
+```move
+use iota::object::{Self, UID, ID};
+
+public struct MyObject has key {
+    id: UID,  // Every object must have a UID
+    data: u64,
+}
+
+// Create a new object
+fun create_object(ctx: &mut TxContext): MyObject {
+    MyObject {
+        id: object::new(ctx),
+        data: 0,
+    }
+}
+
+// Get object ID
+fun get_id(obj: &MyObject): ID {
+    object::id(obj)
+}
+
+// Convert ID to address
+fun id_to_address(obj: &MyObject): address {
+    object::id(obj).to_address()
+}
+
+// Delete object
+fun delete_object(obj: MyObject) {
+    let MyObject { id, data: _ } = obj;
+    id.delete();
+}
+```
+
+### Transfer module
+
+The `iota::transfer` module handles object ownership:
+
+```move
+use iota::transfer;
+
+// Transfer owned object
+public fun transfer_object(obj: MyObject, recipient: address) {
+    transfer::transfer(obj, recipient);
+}
+
+// Public transfer (callable by anyone)
+public fun public_transfer_object(obj: MyObject, recipient: address) {
+    transfer::public_transfer(obj, recipient);
+}
+
+// Share object (accessible by everyone)
+public fun share_object(obj: MyObject) {
+    transfer::share_object(obj);
+}
+
+// Freeze object (immutable)
+public fun freeze_object(obj: MyObject) {
+    transfer::freeze_object(obj);
+}
+```
+
+### TxContext module
+
+The `iota::tx_context` module provides transaction context:
+
+```move
+use iota::tx_context::{Self, TxContext};
+
+fun use_context(ctx: &TxContext) {
+    // Get transaction sender
+    let sender = tx_context::sender(ctx);
+
+    // Get current epoch
+    let epoch = tx_context::epoch(ctx);
+
+    // Get epoch timestamp
+    let timestamp = tx_context::epoch_timestamp_ms(ctx);
+}
+```
+
+## Collections
+
+### Table
+
+Key-value store with dynamic fields:
+
+```move
+use iota::table::{Self, Table};
+
+public struct Registry has key {
+    id: UID,
+    items: Table<address, u64>,
+}
+
+fun create_registry(ctx: &mut TxContext): Registry {
+    Registry {
+        id: object::new(ctx),
+        items: table::new(ctx),
+    }
+}
+
+fun add_item(registry: &mut Registry, addr: address, value: u64) {
+    table::add(&mut registry.items, addr, value);
+}
+
+fun get_item(registry: &Registry, addr: address): &u64 {
+    table::borrow(&registry.items, addr)
+}
+
+fun remove_item(registry: &mut Registry, addr: address): u64 {
+    table::remove(&mut registry.items, addr)
+}
+```
+
+### Bag
+
+Heterogeneous collection storing different types:
+
+```move
+use iota::bag::{Self, Bag};
+
+public struct Storage has key {
+    id: UID,
+    data: Bag,
+}
+
+fun create_storage(ctx: &mut TxContext): Storage {
+    Storage {
+        id: object::new(ctx),
+        data: bag::new(ctx),
+    }
+}
+
+fun store_data(storage: &mut Storage, key: vector<u8>, value: u64) {
+    bag::add(&mut storage.data, key, value);
+}
+
+fun store_string(storage: &mut Storage, key: vector<u8>, value: String) {
+    bag::add(&mut storage.data, key, value);
+}
+```
+
+### Dynamic fields
+
+Attach additional data to objects dynamically:
+
+```move
+use iota::dynamic_field as df;
+
+public struct Container has key {
+    id: UID,
+}
+
+// Add dynamic field
+fun add_field(container: &mut Container, key: vector<u8>, value: u64) {
+    df::add(&mut container.id, key, value);
+}
+
+// Check if field exists
+fun has_field(container: &Container, key: vector<u8>): bool {
+    df::exists_(&container.id, key)
+}
+
+// Borrow field
+fun get_field(container: &Container, key: vector<u8>): &u64 {
+    df::borrow(&container.id, key)
+}
+
+// Mutably borrow field
+fun get_field_mut(container: &mut Container, key: vector<u8>): &mut u64 {
+    df::borrow_mut(&mut container.id, key)
+}
+
+// Remove field
+fun remove_field(container: &mut Container, key: vector<u8>): u64 {
+    df::remove(&mut container.id, key)
+}
+```
+
+## Token standards
+
+### Coin
+
+Fungible token implementation:
+
+```move
+use iota::coin::{Self, Coin, TreasuryCap};
+use iota::balance::{Self, Balance};
+
+/// Define your coin type
+public struct MY_COIN has drop {}
+
+/// Initialize coin in module init
+fun init(witness: MY_COIN, ctx: &mut TxContext) {
+    let (treasury_cap, metadata) = coin::create_currency(
+        witness,
+        6,  // decimals
+        b"MYC",  // symbol
+        b"My Coin",  // name
+        b"My custom coin",  // description
+        option::none(),  // icon URL
+        ctx
+    );
+
+    transfer::public_freeze_object(metadata);
+    transfer::public_transfer(treasury_cap, tx_context::sender(ctx));
+}
+
+/// Mint new coins
+public fun mint(
+    treasury: &mut TreasuryCap<MY_COIN>,
+    amount: u64,
+    recipient: address,
+    ctx: &mut TxContext
+) {
+    let coin = coin::mint(treasury, amount, ctx);
+    transfer::public_transfer(coin, recipient);
+}
+
+/// Burn coins
+public fun burn(treasury: &mut TreasuryCap<MY_COIN>, coin: Coin<MY_COIN>) {
+    coin::burn(treasury, coin);
+}
+
+/// Split coin
+public fun split_coin(
+    coin: &mut Coin<MY_COIN>,
+    amount: u64,
+    ctx: &mut TxContext
+): Coin<MY_COIN> {
+    coin::split(coin, amount, ctx)
+}
+
+/// Join coins
+public fun join_coins(coin1: &mut Coin<MY_COIN>, coin2: Coin<MY_COIN>) {
+    coin::join(coin1, coin2);
+}
+```
+
+### Balance
+
+Low-level balance management:
+
+```move
+use iota::balance::{Self, Balance, Supply};
+
+public struct Wallet<phantom T> has key {
+    id: UID,
+    balance: Balance<T>,
+}
+
+fun create_wallet<T>(ctx: &mut TxContext): Wallet<T> {
+    Wallet {
+        id: object::new(ctx),
+        balance: balance::zero(),
+    }
+}
+
+fun deposit<T>(wallet: &mut Wallet<T>, balance: Balance<T>) {
+    balance::join(&mut wallet.balance, balance);
+}
+
+fun withdraw<T>(wallet: &mut Wallet<T>, amount: u64): Balance<T> {
+    balance::split(&mut wallet.balance, amount)
+}
+
+fun get_balance<T>(wallet: &Wallet<T>): u64 {
+    balance::value(&wallet.balance)
+}
+```
+
+## Events
+
+Emit events for off-chain indexing:
+
+```move
+use iota::event;
+
+public struct ItemCreated has copy, drop {
+    item_id: ID,
+    creator: address,
+    value: u64,
+}
+
+public struct ItemTransferred has copy, drop {
+    item_id: ID,
+    from: address,
+    to: address,
+}
+
+fun create_item(value: u64, ctx: &mut TxContext) {
+    let id = object::new(ctx);
+    let item_id = object::uid_to_inner(&id);
+
+    event::emit(ItemCreated {
+        item_id,
+        creator: tx_context::sender(ctx),
+        value,
+    });
+
+    // Create item...
+}
+```
+
+## Display standard
+
+Define how objects are displayed:
+
+```move
+use iota::display;
+use iota::package;
+
+public struct NFT has key, store {
+    id: UID,
+    name: String,
+    description: String,
+    image_url: String,
+}
+
+fun init(otw: OTW, ctx: &mut TxContext) {
+    let publisher = package::claim(otw, ctx);
+    let mut display = display::new<NFT>(&publisher, ctx);
+
+    display.add(b"name".to_string(), b"{name}".to_string());
+    display.add(b"description".to_string(), b"{description}".to_string());
+    display.add(b"image_url".to_string(), b"{image_url}".to_string());
+
+    display::update_version(&mut display);
+
+    transfer::public_transfer(publisher, tx_context::sender(ctx));
+    transfer::public_transfer(display, tx_context::sender(ctx));
+}
+```
+
+## Clock
+
+Access blockchain time:
+
+```move
+use iota::clock::{Self, Clock};
+
+public struct TimedAction has key {
+    id: UID,
+    deadline: u64,  // milliseconds
+}
+
+fun create_timed_action(deadline: u64, ctx: &mut TxContext): TimedAction {
+    TimedAction {
+        id: object::new(ctx),
+        deadline,
+    }
+}
+
+fun execute_if_ready(action: &TimedAction, clock: &Clock) {
+    let current_time = clock::timestamp_ms(clock);
+    assert!(current_time >= action.deadline, 0);
+    // Execute action...
+}
+```
+
+## URL
+
+Store and manage URLs:
+
+```move
+use iota::url::{Self, Url};
+use std::string::{Self, String};
+
+public struct Asset has key {
+    id: UID,
+    url: Url,
+}
+
+fun create_asset(url_bytes: vector<u8>, ctx: &mut TxContext): Asset {
+    Asset {
+        id: object::new(ctx),
+        url: url::new_unsafe_from_bytes(url_bytes),
+    }
+}
+
+fun get_url(asset: &Asset): &Url {
+    &asset.url
+}
+```
+
+## Framework best practices
+
+1. **Use appropriate transfer functions**: Choose between `transfer`, `public_transfer`, `share_object`, and `freeze_object` based on your needs
+2. **Handle UID properly**: Always delete UIDs when destroying objects
+3. **Emit events for important actions**: Help indexers track contract activity
+4. **Use collections efficiently**: Choose the right collection type (Table, Bag, Vector) for your use case
+5. **Leverage dynamic fields**: For flexible data structures
+6. **Implement display standard**: For user-friendly object representation
+
+## Updating framework packages
+
+When developing against the framework:
+
+```bash
+# Build framework packages
+cd crates/iota-framework
+iota move test
+
+# Update compiled packages
+UPDATE=1 cargo insta test
+
+# Update protocol snapshot
+cargo run --release --bin iota-framework-snapshot
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Best practices" icon="star" href="/building/best-practices">
+    Learn Move development best practices
+  </Card>
+  <Card title="API reference" icon="code" href="/references/iota-api">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>

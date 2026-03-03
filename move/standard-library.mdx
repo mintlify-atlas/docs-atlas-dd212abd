@@ -1,0 +1,214 @@
+---
+title: IOTA Move Standard Library
+description: Overview of the standard library modules available in the IOTA Move Framework
+---
+
+# Standard Library
+
+The IOTA Move Framework includes a comprehensive standard library that provides essential functionality for smart contract development. This page provides an overview of the major modules.
+
+## Core Modules
+
+### Object Management
+
+#### `iota::object`
+Provides object identifiers (`ID` and `UID`) and functions for creating and managing objects.
+
+Key types:
+- `ID` - An object identifier (copyable)
+- `UID` - A unique object identifier (not droppable)
+
+See: [Object Module Documentation](/move/modules/object)
+
+#### `iota::transfer`
+Functions for transferring object ownership between addresses and converting objects between ownership models.
+
+Key functions:
+- `transfer` - Transfer to an address
+- `share_object` - Make object shared
+- `freeze_object` - Make object immutable
+- `receive` - Receive transferred objects
+
+See: [Transfer Module Documentation](/move/modules/transfer)
+
+### Asset Management
+
+#### `iota::coin`
+Implements fungible tokens with standard operations like minting, burning, and transferring.
+
+Key types:
+- `Coin<T>` - A coin holding a balance
+- `TreasuryCap<T>` - Capability to mint/burn coins
+- `CoinMetadata<T>` - Coin metadata (name, symbol, decimals)
+
+See: [Coin Module Documentation](/move/modules/coin)
+
+#### `iota::balance`
+Low-level balance operations that underpin the `Coin` module.
+
+Key types:
+- `Balance<T>` - Storable balance without object wrapper
+- `Supply<T>` - Tracks total supply
+
+See: [Balance Module Documentation](/move/modules/balance)
+
+### Collections
+
+#### `iota::table`
+A map-like collection where keys and values are stored in IOTA's object system.
+
+```move
+public struct Table<phantom K: copy + drop + store, phantom V: store> has key, store
+```
+
+See: [Table Module Documentation](/move/modules/table)
+
+#### `iota::bag`
+A heterogeneous map-like collection that can store different value types.
+
+```move
+public struct Bag has key, store
+```
+
+See: [Bag Module Documentation](/move/modules/bag)
+
+#### `iota::vec_map`
+A simple map backed by a vector of key-value pairs.
+
+#### `iota::vec_set`
+A set backed by a vector.
+
+### Dynamic Fields
+
+#### `iota::dynamic_field`
+Allows adding fields to objects after they've been constructed. Field names can be any type with `copy + drop + store`.
+
+Key functions:
+- `add` - Add a dynamic field
+- `borrow` - Borrow a field immutably
+- `borrow_mut` - Borrow a field mutably
+- `remove` - Remove a field
+- `exists_` - Check if a field exists
+
+See: [Dynamic Fields Documentation](/move/modules/dynamic-fields)
+
+#### `iota::dynamic_object_field`
+Similar to `dynamic_field` but stores objects as fields.
+
+### System Functions
+
+#### `iota::clock`
+Provides access to blockchain time through a shared singleton object at address `0x6`.
+
+```move
+public struct Clock has key {
+    id: UID,
+    timestamp_ms: u64,
+}
+```
+
+See: [Clock Module Documentation](/move/modules/clock)
+
+#### `iota::event`
+Emit custom events that can be tracked off-chain.
+
+```move
+public native fun emit<T: copy + drop>(event: T);
+```
+
+See: [Event Module Documentation](/move/modules/event)
+
+#### `iota::tx_context`
+Provides access to transaction context including sender, digest, and epoch.
+
+### Trading and Marketplaces
+
+#### `iota::kiosk`
+A primitive for building decentralized, trustless trading experiences.
+
+Key types:
+- `Kiosk` - Container for storing and trading assets
+- `KioskOwnerCap` - Capability to manage a kiosk
+- `PurchaseCap<T>` - Capability to purchase a specific item
+
+See: [Kiosk Module Documentation](/move/modules/kiosk)
+
+#### `iota::transfer_policy`
+Defines rules that must be satisfied for transfers to complete.
+
+### Package Management
+
+#### `iota::package`
+Functions for package publishing, upgrades, and version management.
+
+Key types:
+- `Publisher` - Proof of package publication
+- `UpgradeCap` - Capability to upgrade a package
+- `UpgradeTicket` - Authorization for a specific upgrade
+
+Key functions:
+- `claim` - Claim a Publisher object using one-time witness
+- `authorize_upgrade` - Create an upgrade ticket
+- `commit_upgrade` - Finalize an upgrade
+
+### Cryptography
+
+The framework includes modules for various cryptographic operations:
+
+- `iota::hash` - Hashing functions (SHA256, BLAKE2b, Keccak)
+- `iota::ed25519` - Ed25519 signatures
+- `iota::ecdsa_k1` - ECDSA with secp256k1
+- `iota::ecdsa_r1` - ECDSA with secp256r1
+- `iota::bls12381` - BLS12-381 operations
+- `iota::groth16` - Groth16 zero-knowledge proofs
+- `iota::hmac` - HMAC functions
+
+### Utility Modules
+
+#### `iota::address`
+Utilities for working with addresses.
+
+#### `iota::bcs`
+Binary Canonical Serialization encoding/decoding.
+
+#### `iota::hex`
+Hexadecimal encoding/decoding.
+
+#### `iota::url`
+URL handling for object metadata.
+
+#### `iota::display`
+Define display metadata for objects (how they appear in wallets/explorers).
+
+## Module Dependencies
+
+Many framework modules depend on each other:
+
+```
+object (core)
+  ├─> transfer
+  ├─> balance
+  │    └─> coin
+  ├─> dynamic_field
+  │    ├─> table
+  │    └─> bag
+  └─> kiosk
+```
+
+## Usage Patterns
+
+The standard library supports common patterns:
+
+- **Capability pattern**: Use capability objects for access control
+- **Witness pattern**: Use one-time witnesses to prove module authority
+- **Hot potato pattern**: Use types without `drop` to enforce workflows
+
+See the [Patterns](/move/patterns/capability) section for detailed examples.
+
+## Best Practices
+
+1. **Use appropriate ownership models**: Choose between owned, shared, and immutable objects based on your use case
+2. **Leverage capabilities**: Use capability objects for fine-grained access control
+3. **Emit events**: Emit events for important state changes to enable off-chain tracking
+4. **Handle errors properly**: Use descriptive error constants and assertions
+5. **Document your code**: Add comments explaining complex logic and invariants

@@ -1,0 +1,383 @@
+---
+title: Objects and ownership
+description: Understanding IOTA's object model, ownership types, and how objects are used in transactions.
+---
+
+IOTA uses an object-centric data model where all state is represented as objects. This differs from account-based blockchains like Ethereum, providing advantages in parallelization and simplifying asset ownership.
+
+## What are objects?
+
+In IOTA, an object is a structured piece of data that lives on the blockchain. Every object has:
+
+- **Unique ID**: 32-byte identifier that is globally unique
+- **Version**: Lamport timestamp tracking mutation history
+- **Owner**: Specifies who can use the object
+- **Type**: The Move struct type defining its structure
+- **Contents**: BCS-encoded data representing the object's state
+
+```rust
+pub struct MoveObject {
+    // The type of this object (immutable)
+    type_: MoveObjectType,
+    // Lamport timestamp version
+    version: SequenceNumber,
+    // BCS bytes of a Move struct value
+    contents: Vec<u8>,
+}
+```
+
+<Note>
+Objects in IOTA must be defined as Move structs with the `key` ability and have `id: UID` as their first field.
+</Note>
+
+## Object structure in Move
+
+Here's how an object is defined in Move:
+
+```move
+use iota::object::UID;
+
+/// A simple object with key ability
+public struct MyObject has key {
+    id: UID,           // Required: unique identifier
+    value: u64,        // Custom field
+    description: String, // Custom field
+}
+
+/// Creating an object
+public fun create(value: u64, ctx: &mut TxContext): MyObject {
+    MyObject {
+        id: object::new(ctx),
+        value,
+        description: string::utf8(b"example"),
+    }
+}
+```
+
+## Ownership types
+
+IOTA supports different ownership models, each with different access patterns:
+
+### Owned objects
+
+Owned objects belong to a specific address and can only be used by that address:
+
+```move
+use iota::transfer;
+
+public fun create_owned(ctx: &mut TxContext) {
+    let obj = MyObject {
+        id: object::new(ctx),
+        value: 100,
+    };
+    // Transfer to transaction sender
+    transfer::transfer(obj, ctx.sender());
+}
+```
+
+**Characteristics:**
+- Only the owner can use the object in transactions
+- No consensus required to use (fast finality)
+- Enables parallel transaction processing
+- Can be transferred to other addresses
+
+<Info>
+Owned objects enable IOTA's fast transaction processing because validators don't need to coordinate when processing transactions that use different owned objects.
+</Info>
+
+### Shared objects
+
+Shared objects can be accessed by anyone on the network:
+
+```move
+public fun create_shared(ctx: &mut TxContext) {
+    let obj = MyObject {
+        id: object::new(ctx),
+        value: 100,
+    };
+    // Make object shared
+    transfer::share_object(obj);
+}
+```
+
+**Characteristics:**
+- Accessible to all users
+- Requires consensus to sequence transactions
+- Useful for shared resources (e.g., liquidity pools, registries)
+- Marked with `initial_shared_version` indicating when it became shared
+
+<Warning>
+Shared objects require consensus among validators to order transactions, which adds latency compared to owned objects. Use them only when necessary.
+</Warning>
+
+### Immutable objects
+
+Immutable objects cannot be modified after creation:
+
+```move
+public fun create_immutable(ctx: &mut TxContext) {
+    let obj = MyObject {
+        id: object::new(ctx),
+        value: 100,
+    };
+    // Make object immutable
+    transfer::freeze_object(obj);
+}
+```
+
+**Characteristics:**
+- Can be read by anyone
+- Cannot be modified or deleted
+- No consensus required (fast access)
+- Useful for constants, metadata, or reference data
+
+## Object references
+
+Objects are referenced in transactions using `ObjectRef`, which includes:
+
+```rust
+pub type ObjectRef = (ObjectID, SequenceNumber, ObjectDigest);
+```
+
+- **ObjectID**: The unique identifier
+- **SequenceNumber**: The version (Lamport timestamp)
+- **ObjectDigest**: Hash of the object's contents
+
+This triple uniquely identifies a specific version of an object:
+
+```rust
+// Example ObjectRef
+let obj_ref = (
+    object_id,           // 0x1234...
+    SequenceNumber(42),  // version 42
+    object_digest,       // hash of contents
+);
+```
+
+## Using objects in transactions
+
+### Owned objects as arguments
+
+```move
+public fun modify_owned(obj: &mut MyObject, new_value: u64) {
+    obj.value = new_value;
+}
+```
+
+When called in a transaction, the object reference must match the current version.
+
+### Shared objects as arguments
+
+```move
+public fun modify_shared(obj: &mut MyObject, new_value: u64) {
+    obj.value = new_value;
+}
+```
+
+Shared objects require specifying the `initial_shared_version` in the transaction.
+
+### Receiving objects
+
+IOTA supports "receiving" objects that have been transferred to you but not yet explicitly accepted:
+
+```move
+public fun receive_and_process(
+    parent: &mut ParentObject,
+    child: Receiving<ChildObject>
+) {
+    let child_obj = transfer::receive(&mut parent.id, child);
+    // Process the received object
+}
+```
+
+<Note>
+The receiving pattern allows for more flexible asset transfers where the recipient explicitly accepts the object.
+</Note>
+
+## Object deletion
+
+Objects can be deleted using the special `delete` function:
+
+```move
+use iota::object;
+
+public fun destroy(obj: MyObject) {
+    let MyObject { id, value: _ } = obj;
+    object::delete(id);
+}
+```
+
+**Rules for deletion:**
+- Must unpack the struct to access the `UID`
+- Must explicitly call `object::delete(id)`
+- All non-drop fields must be handled
+- Storage rebate is returned to the transaction sender
+
+## Dynamic fields
+
+Objects can have dynamic fields attached to them, enabling flexible, extensible data structures:
+
+```move
+use iota::dynamic_field;
+
+public struct Parent has key {
+    id: UID,
+}
+
+public struct Child has store {
+    value: u64,
+}
+
+public fun add_child(parent: &mut Parent, name: String, child: Child) {
+    dynamic_field::add(&mut parent.id, name, child);
+}
+
+public fun borrow_child(parent: &Parent, name: String): &Child {
+    dynamic_field::borrow(&parent.id, name)
+}
+```
+
+**Benefits:**
+- Add fields without modifying the parent object type
+- Unbounded collections (not limited by object size)
+- Fields can have different types
+- Fields are stored separately (lower gas for partial access)
+
+## Object versioning and lamport timestamps
+
+IOTA uses Lamport timestamps for object versioning:
+
+```rust
+// Each transaction has a Lamport version
+let lamport_version = SequenceNumber::from_u64(1000);
+
+// Objects modified in the transaction get this version
+obj.version = lamport_version;
+```
+
+**How it works:**
+1. Transaction reads input objects with their current versions
+2. Transaction executes and modifies objects
+3. All modified objects get the transaction's Lamport version
+4. Version increments ensure causality and prevent conflicts
+
+<Info>
+Lamport timestamps enable optimistic concurrency: transactions that touch different objects can execute in parallel without conflicts.
+</Info>
+
+## Special object types
+
+### Coins
+
+Coins are special objects representing fungible tokens:
+
+```move
+public struct Coin<phantom T> has key, store {
+    id: UID,
+    balance: Balance<T>,
+}
+```
+
+Coins can be:
+- Split into multiple coins
+- Merged together
+- Transferred between addresses
+- Used to pay for gas
+
+### Packages
+
+Move packages are also objects:
+
+```rust
+pub struct MovePackage {
+    id: ObjectID,
+    version: SequenceNumber,
+    modules: BTreeMap<String, Vec<u8>>, // module bytecode
+    dependencies: Vec<ObjectID>,
+}
+```
+
+Packages:
+- Are immutable by default
+- Can be upgraded (creating a new version)
+- Have dependencies on other packages
+- System packages (e.g., `0x1`, `0x2`) are special
+
+### System objects
+
+IOTA has singleton system objects:
+
+- **IotaSystemState** (`0x5`): Manages validators, epochs, and governance
+- **Clock** (`0x6`): Provides on-chain timestamp
+- **AuthenticatorState** (`0x7`): Manages authentication state
+- **Random** (`0x8`): Randomness beacon
+
+These objects are shared and updated by the system.
+
+## Best practices
+
+### Choose the right ownership model
+
+```move
+// Use owned when possible (faster)
+public fun create_user_object(ctx: &mut TxContext) {
+    let obj = UserObject { id: object::new(ctx), ... };
+    transfer::transfer(obj, ctx.sender());
+}
+
+// Use shared only when necessary
+public fun create_pool(ctx: &mut TxContext) {
+    let pool = LiquidityPool { id: object::new(ctx), ... };
+    transfer::share_object(pool);
+}
+```
+
+### Avoid large objects
+
+```move
+// Bad: storing large collections directly
+public struct Registry has key {
+    id: UID,
+    items: vector<Item>, // Can grow unbounded
+}
+
+// Good: use dynamic fields
+public struct Registry has key {
+    id: UID,
+    count: u64,
+}
+// Store items as dynamic fields: dynamic_field::add(&mut registry.id, key, item)
+```
+
+<Warning>
+IOTA has a maximum object size limit. Objects exceeding this limit will cause transaction failures. Use dynamic fields for unbounded collections.
+</Warning>
+
+### Handle storage rebates
+
+When deleting objects, storage rebate is returned:
+
+```move
+public fun cleanup(obj: MyObject) {
+    let MyObject { id, ... } = obj;
+    object::delete(id);
+    // Storage rebate automatically credited to transaction sender
+}
+```
+
+## Related topics
+
+<CardGroup cols={2}>
+  <Card title="Move language" icon="code" href="/concepts/move-language">
+    Learn about the Move programming language
+  </Card>
+  <Card title="Transactions" icon="exchange-alt" href="/concepts/transactions">
+    Understand transaction structure and lifecycle
+  </Card>
+  <Card title="Gas and fees" icon="gas-pump" href="/concepts/gas-and-fees">
+    Learn about storage costs and rebates
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/concepts/architecture">
+    Overview of IOTA's system architecture
+  </Card>
+</CardGroup>

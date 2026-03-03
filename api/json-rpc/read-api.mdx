@@ -1,0 +1,357 @@
+---
+title: Read API Methods
+description: JSON-RPC methods for reading transaction blocks, objects, checkpoints, and protocol configuration
+---
+
+The Read API provides methods for querying blockchain data including transactions, objects, checkpoints, and protocol configuration.
+
+## iota_getTransactionBlock
+
+Return the transaction response object for a given transaction digest.
+
+<ParamField path="digest" type="TransactionDigest" required>
+  The digest of the queried transaction (Base58 encoded)
+</ParamField>
+
+<ParamField path="options" type="IotaTransactionBlockResponseOptions">
+  Options for specifying the content to be returned
+  
+  <Expandable title="IotaTransactionBlockResponseOptions">
+    <ResponseField name="showInput" type="boolean">
+      Include transaction input data
+    </ResponseField>
+    <ResponseField name="showEffects" type="boolean">
+      Include transaction effects
+    </ResponseField>
+    <ResponseField name="showEvents" type="boolean">
+      Include events emitted by the transaction
+    </ResponseField>
+    <ResponseField name="showObjectChanges" type="boolean">
+      Include object changes
+    </ResponseField>
+    <ResponseField name="showBalanceChanges" type="boolean">
+      Include balance changes
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="digest" type="TransactionDigest">
+  The transaction digest
+</ResponseField>
+
+<ResponseField name="transaction" type="Transaction">
+  The transaction data
+</ResponseField>
+
+<ResponseField name="effects" type="TransactionEffects">
+  The effects of executing the transaction
+</ResponseField>
+
+<ResponseField name="checkpoint" type="BigInt<u64>">
+  The checkpoint number when this transaction was finalized
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_getTransactionBlock",
+    "params": [
+      "Dv5XRBjWvZTwiHVrhUetvDTgxyM8xVMb6P8pCAZv51tq",
+      {
+        "showInput": true,
+        "showEffects": true,
+        "showEvents": true
+      }
+    ]
+  }'
+```
+
+## iota_multiGetTransactionBlocks
+
+Returns an ordered list of transaction responses for multiple transaction digests.
+
+<ParamField path="digests" type="Vec<TransactionDigest>" required>
+  A list of transaction digests (maximum 50 per request)
+</ParamField>
+
+<ParamField path="options" type="IotaTransactionBlockResponseOptions">
+  Config options to control which fields to fetch
+</ParamField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_multiGetTransactionBlocks",
+    "params": [
+      [
+        "Dv5XRBjWvZTwiHVrhUetvDTgxyM8xVMb6P8pCAZv51tq",
+        "8bXXsW9JQuYWXnLNhqnzQvzxiLHPFPH4fRLhbkdGVZza"
+      ],
+      {
+        "showInput": true,
+        "showEffects": true
+      }
+    ]
+  }'
+```
+
+## iota_getObject
+
+Return the object information for a specified object ID.
+
+<ParamField path="object_id" type="ObjectID" required>
+  The ID of the queried object (hex string prefixed with 0x)
+</ParamField>
+
+<ParamField path="options" type="IotaObjectDataOptions">
+  Options for specifying the content to be returned
+  
+  <Expandable title="IotaObjectDataOptions">
+    <ResponseField name="showType" type="boolean">
+      Show the object type
+    </ResponseField>
+    <ResponseField name="showOwner" type="boolean">
+      Show the object owner
+    </ResponseField>
+    <ResponseField name="showPreviousTransaction" type="boolean">
+      Show the previous transaction digest
+    </ResponseField>
+    <ResponseField name="showContent" type="boolean">
+      Show the object content/Move fields
+    </ResponseField>
+    <ResponseField name="showBcs" type="boolean">
+      Show the BCS-encoded object data
+    </ResponseField>
+    <ResponseField name="showStorageRebate" type="boolean">
+      Show the storage rebate
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_getObject",
+    "params": [
+      "0x5",
+      {
+        "showType": true,
+        "showOwner": true,
+        "showContent": true
+      }
+    ]
+  }'
+```
+
+## iota_multiGetObjects
+
+Return the object data for a list of objects.
+
+<ParamField path="object_ids" type="Vec<ObjectID>" required>
+  The IDs of the queried objects
+</ParamField>
+
+<ParamField path="options" type="IotaObjectDataOptions">
+  Options for specifying the content to be returned
+</ParamField>
+
+## iota_tryGetPastObject
+
+Return the object information for a specified version. Note: There is no software-level guarantee that objects with past versions can be retrieved.
+
+<ParamField path="object_id" type="ObjectID" required>
+  The ID of the queried object
+</ParamField>
+
+<ParamField path="version" type="SequenceNumber" required>
+  The version of the queried object
+</ParamField>
+
+<ParamField path="options" type="IotaObjectDataOptions">
+  Options for specifying the content to be returned
+</ParamField>
+
+## iota_getCheckpoint
+
+Return a checkpoint by its sequence number or digest.
+
+<ParamField path="id" type="CheckpointId" required>
+  Checkpoint identifier - can use either checkpoint digest or checkpoint sequence number as input
+</ParamField>
+
+<ResponseField name="epoch" type="BigInt<u64>">
+  Checkpoint's epoch ID
+</ResponseField>
+
+<ResponseField name="sequenceNumber" type="BigInt<u64>">
+  Checkpoint sequence number
+</ResponseField>
+
+<ResponseField name="digest" type="String">
+  Checkpoint digest (Base58 encoded)
+</ResponseField>
+
+<ResponseField name="networkTotalTransactions" type="BigInt<u64>">
+  Total number of transactions in the network by the end of this checkpoint
+</ResponseField>
+
+<ResponseField name="previousDigest" type="String">
+  Digest of the previous checkpoint
+</ResponseField>
+
+<ResponseField name="timestampMs" type="BigInt<u64>">
+  Timestamp of the checkpoint in milliseconds
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_getCheckpoint",
+    "params": ["1000"]
+  }'
+```
+
+## iota_getCheckpoints
+
+Return a paginated list of checkpoints.
+
+<ParamField path="cursor" type="BigInt<u64>">
+  An optional paging cursor. If provided, the query will start from the next item after the specified cursor
+</ParamField>
+
+<ParamField path="limit" type="usize">
+  Maximum items returned per page (default: 50, max: 100)
+</ParamField>
+
+<ParamField path="descending_order" type="boolean" required>
+  Query result ordering - false for ascending (oldest first), true for descending (newest first)
+</ParamField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_getCheckpoints",
+    "params": [null, 10, false]
+  }'
+```
+
+## iota_getEvents
+
+Return transaction events for a given transaction digest.
+
+<ParamField path="transaction_digest" type="TransactionDigest" required>
+  The transaction digest to query events for
+</ParamField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_getEvents",
+    "params": ["Dv5XRBjWvZTwiHVrhUetvDTgxyM8xVMb6P8pCAZv51tq"]
+  }'
+```
+
+## iota_getTotalTransactionBlocks
+
+Return the total number of transaction blocks known to the server.
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_getTotalTransactionBlocks",
+    "params": []
+  }'
+```
+
+## iota_getLatestCheckpointSequenceNumber
+
+Return the sequence number of the latest checkpoint that has been executed.
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_getLatestCheckpointSequenceNumber",
+    "params": []
+  }'
+```
+
+## iota_getProtocolConfig
+
+Return the protocol config table for the given version number. If none is specified, the node uses the version of the latest epoch it has processed.
+
+<ParamField path="version" type="BigInt<u64>">
+  An optional protocol version specifier. If omitted, the latest protocol config table will be returned
+</ParamField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_getProtocolConfig",
+    "params": []
+  }'
+```
+
+## iota_getChainIdentifier
+
+Return the first four bytes of the chain's genesis checkpoint digest.
+
+<ResponseField name="result" type="String">
+  The chain identifier string
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_getChainIdentifier",
+    "params": []
+  }'
+```
+
+## iota_isTransactionIndexedOnNode
+
+Return whether the transaction has been indexed on the fullnode.
+
+<ParamField path="digest" type="TransactionDigest" required>
+  The digest of the queried transaction
+</ParamField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_isTransactionIndexedOnNode",
+    "params": ["Dv5XRBjWvZTwiHVrhUetvDTgxyM8xVMb6P8pCAZv51tq"]
+  }'
+```

@@ -1,0 +1,332 @@
+---
+title: Object Module
+description: Core object identifier types and functions for the IOTA Move Framework
+---
+
+# Object Module
+
+The `iota::object` module provides the fundamental types and functions for working with IOTA objects. Every object on IOTA has a unique identifier managed by this module.
+
+Source: `crates/iota-framework/packages/iota-framework/sources/object.move`
+
+## Core Types
+
+### ID
+
+An object identifier that can be freely copied and dropped. Multiple `ID` values can reference the same underlying object.
+
+```move
+public struct ID has copy, drop, store {
+    bytes: address,
+}
+```
+
+The `ID` type:
+- Can be copied and dropped freely
+- Uses `address` internally for compact serialization
+- Not globally unique (same ID can exist in multiple places)
+- Used to reference objects
+
+### UID
+
+A globally unique identifier that must be the first field of any object with the `key` ability.
+
+```move
+public struct UID has store {
+    id: ID,
+}
+```
+
+The `UID` type:
+- Does NOT have `drop` - must be explicitly deleted
+- Globally unique - no two `UID` values are ever equal
+- Can only be created from `TxContext`
+- Must be deleted with `object::delete()`
+
+## Creating Objects
+
+### new
+
+Create a new unique object identifier:
+
+<ParamField path="ctx" type="&mut TxContext" required>
+  Transaction context used to generate a fresh object address
+</ParamField>
+
+```move
+public fun new(ctx: &mut TxContext): UID
+```
+
+Example:
+```move
+public struct MyObject has key {
+    id: UID,
+    value: u64,
+}
+
+public fun create_object(value: u64, ctx: &mut TxContext) {
+    let obj = MyObject {
+        id: object::new(ctx),
+        value,
+    };
+    transfer::transfer(obj, ctx.sender());
+}
+```
+
+## Deleting Objects
+
+### delete
+
+Delete a `UID` and inform the system about the object deletion:
+
+<ParamField path="id" type="UID" required>
+  The UID to delete
+</ParamField>
+
+```move
+public fun delete(id: UID)
+```
+
+Example:
+```move
+public fun destroy_object(obj: MyObject) {
+    let MyObject { id, value: _ } = obj;
+    object::delete(id);
+}
+```
+
+## Working with IDs
+
+### id
+
+Get the ID of any object with the `key` ability:
+
+<ParamField path="obj" type="&T" required>
+  Reference to an object with the key ability
+</ParamField>
+
+```move
+public fun id<T: key>(obj: &T): ID
+```
+
+Example:
+```move
+let object_id = object::id(&my_object);
+```
+
+### borrow_id
+
+Borrow a reference to an object's ID:
+
+<ParamField path="obj" type="&T" required>
+  Reference to an object with the key ability
+</ParamField>
+
+```move
+public fun borrow_id<T: key>(obj: &T): &ID
+```
+
+### id_address
+
+Get the address of an object:
+
+<ParamField path="obj" type="&T" required>
+  Reference to an object with the key ability
+</ParamField>
+
+```move
+public fun id_address<T: key>(obj: &T): address
+```
+
+Example:
+```move
+let addr = object::id_address(&my_object);
+```
+
+### id_bytes
+
+Get the raw bytes of an object's ID:
+
+<ParamField path="obj" type="&T" required>
+  Reference to an object with the key ability
+</ParamField>
+
+```move
+public fun id_bytes<T: key>(obj: &T): vector<u8>
+```
+
+## ID Conversion Functions
+
+### id_from_address
+
+Create an ID from an address:
+
+<ParamField path="bytes" type="address" required>
+  Address to convert to ID
+</ParamField>
+
+```move
+public fun id_from_address(bytes: address): ID
+```
+
+### id_from_bytes
+
+Create an ID from raw bytes:
+
+<ParamField path="bytes" type="vector<u8>" required>
+  Bytes to convert to ID
+</ParamField>
+
+```move
+public fun id_from_bytes(bytes: vector<u8>): ID
+```
+
+### id_to_address
+
+Get the inner address of an ID:
+
+<ParamField path="id" type="&ID" required>
+  ID to convert
+</ParamField>
+
+```move
+public fun id_to_address(id: &ID): address
+```
+
+### id_to_bytes
+
+Get the BCS-encoded bytes of an ID:
+
+<ParamField path="id" type="&ID" required>
+  ID to convert
+</ParamField>
+
+```move
+public fun id_to_bytes(id: &ID): vector<u8>
+```
+
+## UID Accessor Functions
+
+### uid_as_inner
+
+Get the inner ID of a UID:
+
+<ParamField path="uid" type="&UID" required>
+  UID to access
+</ParamField>
+
+```move
+public fun uid_as_inner(uid: &UID): &ID
+```
+
+### uid_to_inner
+
+Extract the ID from a UID:
+
+<ParamField path="uid" type="&UID" required>
+  UID to extract from
+</ParamField>
+
+```move
+public fun uid_to_inner(uid: &UID): ID
+```
+
+### uid_to_address
+
+Get the address of a UID:
+
+<ParamField path="uid" type="&UID" required>
+  UID to convert
+</ParamField>
+
+```move
+public fun uid_to_address(uid: &UID): address
+```
+
+### uid_to_bytes
+
+Get the BCS-encoded bytes of a UID:
+
+<ParamField path="uid" type="&UID" required>
+  UID to convert
+</ParamField>
+
+```move
+public fun uid_to_bytes(uid: &UID): vector<u8>
+```
+
+## Singleton Object Constants
+
+The module defines hardcoded IDs for singleton system objects:
+
+```move
+const IOTA_SYSTEM_STATE_OBJECT_ID: address = @0x5;
+const IOTA_CLOCK_OBJECT_ID: address = @0x6;
+const IOTA_AUTHENTICATOR_STATE_ID: address = @0x7;
+const IOTA_RANDOM_ID: address = @0x8;
+const IOTA_DENY_LIST_OBJECT_ID: address = @0x403;
+```
+
+## Extension Functions
+
+The module uses method syntax to allow calling functions as methods:
+
+```move
+// Instead of: object::id_to_address(&id)
+// You can use: id.to_address()
+public use fun id_to_address as ID.to_address;
+public use fun id_to_bytes as ID.to_bytes;
+public use fun uid_as_inner as UID.as_inner;
+public use fun uid_to_inner as UID.to_inner;
+public use fun uid_to_address as UID.to_address;
+public use fun uid_to_bytes as UID.to_bytes;
+```
+
+Example usage:
+```move
+let id: ID = /* ... */;
+let addr = id.to_address();  // Method syntax
+let bytes = id.to_bytes();   // Method syntax
+```
+
+## Complete Example
+
+```move
+module example::my_nft {
+    use iota::object::{Self, UID, ID};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    public struct NFT has key, store {
+        id: UID,
+        name: vector<u8>,
+        description: vector<u8>,
+    }
+
+    public fun mint(name: vector<u8>, description: vector<u8>, ctx: &mut TxContext): ID {
+        let nft = NFT {
+            id: object::new(ctx),
+            name,
+            description,
+        };
+        let nft_id = object::id(&nft);
+        transfer::transfer(nft, ctx.sender());
+        nft_id
+    }
+
+    public fun burn(nft: NFT) {
+        let NFT { id, name: _, description: _ } = nft;
+        object::delete(id);
+    }
+
+    public fun get_nft_address(nft: &NFT): address {
+        object::id_address(nft)
+    }
+}
+```
+
+## Error Codes
+
+```move
+const ENotSystemAddress: u64 = 0;  // Sender is not @0x0 the system address
+```

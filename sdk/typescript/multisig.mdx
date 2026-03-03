@@ -1,0 +1,468 @@
+---
+title: Multisig Functionality
+description: Create and manage multi-signature wallets and transactions with the IOTA TypeScript SDK
+---
+
+Multi-signature (multisig) allows multiple parties to jointly control assets and approve transactions. The IOTA TypeScript SDK provides comprehensive multisig support.
+
+## Overview
+
+Multisig on IOTA allows:
+- Multiple signers with different weights
+- Configurable threshold for transaction approval
+- Support for Ed25519, Secp256k1, and Secp256r1 keys
+- Up to 10 signers per multisig address
+
+## Creating a Multisig Public Key
+
+### Basic Multisig Setup
+
+Create a 2-of-3 multisig where any 2 out of 3 parties must sign:
+
+```typescript
+import { MultiSigPublicKey } from '@iota/iota-sdk/multisig';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+
+// Generate three keypairs
+const keypair1 = new Ed25519Keypair();
+const keypair2 = new Ed25519Keypair();
+const keypair3 = new Ed25519Keypair();
+
+// Create multisig public key with equal weights
+const multisigPublicKey = MultiSigPublicKey.fromPublicKeys({
+  threshold: 2,  // Require 2 signatures
+  publicKeys: [
+    { publicKey: keypair1.getPublicKey(), weight: 1 },
+    { publicKey: keypair2.getPublicKey(), weight: 1 },
+    { publicKey: keypair3.getPublicKey(), weight: 1 },
+  ],
+});
+
+// Get the multisig address
+const multisigAddress = multisigPublicKey.toIotaAddress();
+console.log('Multisig address:', multisigAddress);
+```
+
+### Weighted Multisig
+
+Create a multisig with different weights for each signer:
+
+```typescript
+import { MultiSigPublicKey } from '@iota/iota-sdk/multisig';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+
+const admin = new Ed25519Keypair();
+const member1 = new Ed25519Keypair();
+const member2 = new Ed25519Keypair();
+
+// Admin has weight 2, members have weight 1 each
+// Threshold is 3, so admin + 1 member, or all members can approve
+const multisigPublicKey = MultiSigPublicKey.fromPublicKeys({
+  threshold: 3,
+  publicKeys: [
+    { publicKey: admin.getPublicKey(), weight: 2 },
+    { publicKey: member1.getPublicKey(), weight: 1 },
+    { publicKey: member2.getPublicKey(), weight: 1 },
+  ],
+});
+
+const multisigAddress = multisigPublicKey.toIotaAddress();
+console.log('Weighted multisig address:', multisigAddress);
+```
+
+### Mixed Signature Schemes
+
+Combine different signature schemes:
+
+```typescript
+import { MultiSigPublicKey } from '@iota/iota-sdk/multisig';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Secp256k1Keypair } from '@iota/iota-sdk/keypairs/secp256k1';
+import { Secp256r1Keypair } from '@iota/iota-sdk/keypairs/secp256r1';
+
+const ed25519Key = new Ed25519Keypair();
+const secp256k1Key = new Secp256k1Keypair();
+const secp256r1Key = new Secp256r1Keypair();
+
+const multisigPublicKey = MultiSigPublicKey.fromPublicKeys({
+  threshold: 2,
+  publicKeys: [
+    { publicKey: ed25519Key.getPublicKey(), weight: 1 },
+    { publicKey: secp256k1Key.getPublicKey(), weight: 1 },
+    { publicKey: secp256r1Key.getPublicKey(), weight: 1 },
+  ],
+});
+
+const multisigAddress = multisigPublicKey.toIotaAddress();
+console.log('Mixed-scheme multisig address:', multisigAddress);
+```
+
+## Signing Transactions
+
+### Using MultiSigSigner
+
+The `MultiSigSigner` combines multiple signatures to execute transactions:
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { MultiSigPublicKey, MultiSigSigner } from '@iota/iota-sdk/multisig';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+
+// Create keypairs
+const keypair1 = new Ed25519Keypair();
+const keypair2 = new Ed25519Keypair();
+const keypair3 = new Ed25519Keypair();
+
+// Create multisig (2-of-3)
+const multisigPublicKey = MultiSigPublicKey.fromPublicKeys({
+  threshold: 2,
+  publicKeys: [
+    { publicKey: keypair1.getPublicKey(), weight: 1 },
+    { publicKey: keypair2.getPublicKey(), weight: 1 },
+    { publicKey: keypair3.getPublicKey(), weight: 1 },
+  ],
+});
+
+// Create a transaction
+const tx = new Transaction();
+tx.transferObjects([objectId], recipientAddress);
+
+// Create multisig signer with 2 out of 3 signatures
+const multiSigSigner = new MultiSigSigner({
+  multisigPublicKey,
+  signers: [keypair1, keypair2], // Sign with first two keys
+});
+
+// Sign and execute
+const result = await client.signAndExecuteTransaction({
+  signer: multiSigSigner,
+  transaction: tx,
+});
+
+console.log('Transaction result:', result);
+```
+
+### Collecting Signatures
+
+Collect signatures from different parties separately:
+
+```typescript
+import { MultiSigPublicKey } from '@iota/iota-sdk/multisig';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+// Setup multisig
+const keypair1 = new Ed25519Keypair();
+const keypair2 = new Ed25519Keypair();
+
+const multisigPublicKey = MultiSigPublicKey.fromPublicKeys({
+  threshold: 2,
+  publicKeys: [
+    { publicKey: keypair1.getPublicKey(), weight: 1 },
+    { publicKey: keypair2.getPublicKey(), weight: 1 },
+  ],
+});
+
+// Create transaction
+const tx = new Transaction();
+tx.transferObjects([objectId], recipientAddress);
+
+// Build transaction bytes
+const txBytes = await tx.build({ client });
+
+// Party 1 signs
+const signature1 = await keypair1.sign(txBytes);
+
+// Party 2 signs (can happen separately)
+const signature2 = await keypair2.sign(txBytes);
+
+// Combine signatures using multisig public key
+const multisigSignature = multisigPublicKey.combinePartialSignatures([
+  signature1,
+  signature2,
+]);
+
+// Execute with combined signature
+const result = await client.executeTransaction({
+  transaction: txBytes,
+  signature: multisigSignature,
+});
+```
+
+## Multisig Constraints
+
+```typescript
+import { 
+  MAX_SIGNER_IN_MULTISIG,
+  MIN_SIGNER_IN_MULTISIG,
+} from '@iota/iota-sdk/multisig';
+
+console.log('Max signers:', MAX_SIGNER_IN_MULTISIG);  // 10
+console.log('Min signers:', MIN_SIGNER_IN_MULTISIG);  // 1
+```
+
+Constraints:
+- **Minimum signers**: 1
+- **Maximum signers**: 10
+- **Minimum threshold**: 1
+- **Maximum threshold**: Sum of all weights
+- **No duplicate public keys** allowed
+
+## Common Multisig Patterns
+
+### 2-of-2 Joint Account
+
+```typescript
+import { MultiSigPublicKey } from '@iota/iota-sdk/multisig';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+
+const alice = new Ed25519Keypair();
+const bob = new Ed25519Keypair();
+
+// Both must sign
+const multisigPublicKey = MultiSigPublicKey.fromPublicKeys({
+  threshold: 2,
+  publicKeys: [
+    { publicKey: alice.getPublicKey(), weight: 1 },
+    { publicKey: bob.getPublicKey(), weight: 1 },
+  ],
+});
+```
+
+### 2-of-3 Recovery Wallet
+
+```typescript
+const primary = new Ed25519Keypair();
+const recovery1 = new Ed25519Keypair();
+const recovery2 = new Ed25519Keypair();
+
+// Primary + recovery, or both recovery keys
+const multisigPublicKey = MultiSigPublicKey.fromPublicKeys({
+  threshold: 2,
+  publicKeys: [
+    { publicKey: primary.getPublicKey(), weight: 1 },
+    { publicKey: recovery1.getPublicKey(), weight: 1 },
+    { publicKey: recovery2.getPublicKey(), weight: 1 },
+  ],
+});
+```
+
+### Corporate Treasury (Weighted)
+
+```typescript
+const ceo = new Ed25519Keypair();
+const cfo = new Ed25519Keypair();
+const director1 = new Ed25519Keypair();
+const director2 = new Ed25519Keypair();
+
+// CEO or CFO can approve alone, or both directors together
+const multisigPublicKey = MultiSigPublicKey.fromPublicKeys({
+  threshold: 3,
+  publicKeys: [
+    { publicKey: ceo.getPublicKey(), weight: 3 },
+    { publicKey: cfo.getPublicKey(), weight: 3 },
+    { publicKey: director1.getPublicKey(), weight: 2 },
+    { publicKey: director2.getPublicKey(), weight: 2 },
+  ],
+});
+```
+
+## Inspecting Multisig Public Keys
+
+```typescript
+import { MultiSigPublicKey } from '@iota/iota-sdk/multisig';
+
+const multisigPublicKey = MultiSigPublicKey.fromPublicKeys({
+  threshold: 2,
+  publicKeys: [
+    { publicKey: key1.getPublicKey(), weight: 1 },
+    { publicKey: key2.getPublicKey(), weight: 1 },
+  ],
+});
+
+// Get threshold
+const threshold = multisigPublicKey.getThreshold();
+console.log('Threshold:', threshold);
+
+// Get public keys with weights
+const publicKeys = multisigPublicKey.getPublicKeys();
+publicKeys.forEach((pk) => {
+  console.log('Public key:', pk.publicKey.toBase64());
+  console.log('Weight:', pk.weight);
+});
+
+// Get IOTA address
+const address = multisigPublicKey.toIotaAddress();
+console.log('Multisig address:', address);
+
+// Serialize to base64
+const serialized = multisigPublicKey.toBase64();
+console.log('Serialized:', serialized);
+```
+
+## Deserializing Multisig Keys
+
+```typescript
+import { MultiSigPublicKey } from '@iota/iota-sdk/multisig';
+
+// From base64 string
+const multisigPublicKey = new MultiSigPublicKey('base64_encoded_key');
+
+// From bytes
+const bytes = new Uint8Array([...]);
+const multisigPublicKey2 = new MultiSigPublicKey(bytes);
+
+// From struct
+const struct = {
+  pk_map: [
+    { pubKey: { ED25519: [...] }, weight: 1 },
+    { pubKey: { ED25519: [...] }, weight: 1 },
+  ],
+  threshold: 2,
+};
+const multisigPublicKey3 = new MultiSigPublicKey(struct);
+```
+
+## Error Handling
+
+```typescript
+import { MultiSigPublicKey } from '@iota/iota-sdk/multisig';
+
+try {
+  const multisigPublicKey = MultiSigPublicKey.fromPublicKeys({
+    threshold: 2,
+    publicKeys: [
+      { publicKey: key1.getPublicKey(), weight: 1 },
+      { publicKey: key1.getPublicKey(), weight: 1 }, // Duplicate!
+    ],
+  });
+} catch (error) {
+  console.error('Error:', error.message);
+  // "Multisig does not support duplicate public keys"
+}
+
+try {
+  const multisigPublicKey = MultiSigPublicKey.fromPublicKeys({
+    threshold: 0, // Invalid!
+    publicKeys: [
+      { publicKey: key1.getPublicKey(), weight: 1 },
+    ],
+  });
+} catch (error) {
+  console.error('Error:', error.message);
+  // "Invalid threshold"
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Secure Key Distribution">
+    Distribute private keys securely to different parties:
+    
+    ```typescript
+    // Each party generates their own keypair
+    // Party 1 (local)
+    const keypair1 = new Ed25519Keypair();
+    
+    // Party 2 (remote) - shares only public key
+    const publicKey2 = parsePublicKey(receivedPublicKey);
+    
+    // Create multisig with public keys only
+    const multisigPublicKey = MultiSigPublicKey.fromPublicKeys({
+      threshold: 2,
+      publicKeys: [
+        { publicKey: keypair1.getPublicKey(), weight: 1 },
+        { publicKey: publicKey2, weight: 1 },
+      ],
+    });
+    ```
+  </Accordion>
+  
+  <Accordion title="Set Appropriate Thresholds">
+    Choose thresholds that balance security and availability:
+    
+    ```typescript
+    // 2-of-3 for redundancy (can lose 1 key)
+    const recoverable = MultiSigPublicKey.fromPublicKeys({
+      threshold: 2,
+      publicKeys: [key1, key2, key3].map(k => ({ 
+        publicKey: k.getPublicKey(), 
+        weight: 1 
+      })),
+    });
+    
+    // 3-of-5 for high security
+    const secure = MultiSigPublicKey.fromPublicKeys({
+      threshold: 3,
+      publicKeys: [key1, key2, key3, key4, key5].map(k => ({ 
+        publicKey: k.getPublicKey(), 
+        weight: 1 
+      })),
+    });
+    ```
+  </Accordion>
+  
+  <Accordion title="Use Weights for Hierarchies">
+    Implement organizational hierarchies with weights:
+    
+    ```typescript
+    const multisigPublicKey = MultiSigPublicKey.fromPublicKeys({
+      threshold: 5,  // Needs 5 weight units
+      publicKeys: [
+        { publicKey: admin.getPublicKey(), weight: 5 },    // Admin can approve alone
+        { publicKey: manager1.getPublicKey(), weight: 3 }, // 2 managers needed
+        { publicKey: manager2.getPublicKey(), weight: 3 },
+        { publicKey: user1.getPublicKey(), weight: 2 },    // 3 users needed
+        { publicKey: user2.getPublicKey(), weight: 2 },
+        { publicKey: user3.getPublicKey(), weight: 2 },
+      ],
+    });
+    ```
+  </Accordion>
+  
+  <Accordion title="Store Multisig Configuration">
+    Keep a record of multisig configuration:
+    
+    ```typescript
+    const config = {
+      threshold: 2,
+      publicKeys: [
+        {
+          publicKey: key1.getPublicKey().toBase64(),
+          weight: 1,
+          label: 'Alice',
+        },
+        {
+          publicKey: key2.getPublicKey().toBase64(),
+          weight: 1,
+          label: 'Bob',
+        },
+      ],
+    };
+    
+    // Store configuration
+    localStorage.setItem('multisig-config', JSON.stringify(config));
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Signing" icon="pen" href="./signing">
+    Learn about keypairs and signing
+  </Card>
+  <Card title="Transactions" icon="exchange" href="./transactions">
+    Build and execute transactions
+  </Card>
+  <Card title="Sponsored Transactions" icon="hand-holding-dollar" href="./sponsored-transactions">
+    Gas-sponsored multisig transactions
+  </Card>
+  <Card title="Examples" icon="code" href="./examples">
+    See complete multisig examples
+  </Card>
+</CardGroup>

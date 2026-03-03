@@ -1,0 +1,506 @@
+---
+title: Sponsored Transactions
+description: Execute transactions where gas fees are paid by a sponsor account
+---
+
+Sponsored transactions allow one account (the sponsor) to pay gas fees for transactions initiated by another account. This is useful for improving user experience and enabling gasless transactions.
+
+## Overview
+
+In a sponsored transaction:
+- **User** - Creates and signs the transaction
+- **Sponsor** - Pays the gas fees and co-signs the transaction
+- **Transaction** - Executes using the sponsor's gas payment
+
+## Basic Sponsored Transaction
+
+### Step 1: User Creates Transaction
+
+The user creates a transaction without specifying gas payment:
+
+```typescript
+import { Transaction } from '@iota/iota-sdk/transactions';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+
+// User's keypair
+const userKeypair = new Ed25519Keypair();
+
+// Create transaction
+const tx = new Transaction();
+tx.transferObjects([objectId], recipientAddress);
+
+// User sets themselves as sender
+tx.setSender(userKeypair.getPublicKey().toIotaAddress());
+```
+
+### Step 2: Sponsor Signs and Executes
+
+The sponsor provides gas payment and executes the transaction:
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+
+const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+
+// Sponsor's keypair
+const sponsorKeypair = new Ed25519Keypair();
+const sponsorAddress = sponsorKeypair.getPublicKey().toIotaAddress();
+
+// Get sponsor's coins for gas payment
+const coins = await client.getCoins({ owner: sponsorAddress });
+
+// Set gas payment from sponsor
+tx.setGasPayment([
+  {
+    objectId: coins.data[0].coinObjectId,
+    version: coins.data[0].version,
+    digest: coins.data[0].digest,
+  },
+]);
+
+// Build transaction bytes
+const txBytes = await tx.build({ client });
+
+// User signs the transaction
+const userSignature = await userKeypair.sign(txBytes);
+
+// Sponsor signs the transaction
+const sponsorSignature = await sponsorKeypair.sign(txBytes);
+
+// Combine signatures
+const signatures = [userSignature, sponsorSignature];
+
+// Execute transaction
+const result = await client.executeTransaction({
+  transaction: txBytes,
+  signature: signatures,
+});
+
+console.log('Sponsored transaction result:', result);
+```
+
+## Complete Example
+
+Here's a complete end-to-end example:
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+async function sponsoredTransactionExample() {
+  const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+  
+  // User and sponsor keypairs
+  const userKeypair = new Ed25519Keypair();
+  const sponsorKeypair = new Ed25519Keypair();
+  
+  const userAddress = userKeypair.getPublicKey().toIotaAddress();
+  const sponsorAddress = sponsorKeypair.getPublicKey().toIotaAddress();
+  
+  // 1. User creates transaction
+  const tx = new Transaction();
+  const [coin] = tx.splitCoins(tx.gas, [1000]);
+  tx.transferObjects([coin], userAddress);
+  tx.setSender(userAddress);
+  
+  // 2. Sponsor provides gas
+  const sponsorCoins = await client.getCoins({ owner: sponsorAddress });
+  tx.setGasPayment([
+    {
+      objectId: sponsorCoins.data[0].coinObjectId,
+      version: sponsorCoins.data[0].version,
+      digest: sponsorCoins.data[0].digest,
+    },
+  ]);
+  
+  // 3. Build transaction
+  const txBytes = await tx.build({ client });
+  
+  // 4. Both parties sign
+  const userSignature = await userKeypair.sign(txBytes);
+  const sponsorSignature = await sponsorKeypair.sign(txBytes);
+  
+  // 5. Execute with both signatures
+  const result = await client.executeTransaction({
+    transaction: txBytes,
+    signature: [userSignature, sponsorSignature],
+  });
+  
+  console.log('Transaction digest:', result.digest);
+  return result;
+}
+
+sponsoredTransactionExample().catch(console.error);
+```
+
+## Sponsor Server Pattern
+
+A common pattern is to have a sponsor server that signs transactions:
+
+### Client Side
+
+```typescript
+import { Transaction } from '@iota/iota-sdk/transactions';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+
+async function createSponsoredTransaction() {
+  const userKeypair = new Ed25519Keypair();
+  const userAddress = userKeypair.getPublicKey().toIotaAddress();
+  
+  // Create transaction
+  const tx = new Transaction();
+  tx.transferObjects([objectId], recipientAddress);
+  tx.setSender(userAddress);
+  
+  // Build transaction bytes
+  const txBytes = await tx.build({ client });
+  
+  // User signs
+  const userSignature = await userKeypair.sign(txBytes);
+  
+  // Send to sponsor server
+  const response = await fetch('https://sponsor-server.com/sponsor', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      transactionBytes: Array.from(txBytes),
+      userSignature,
+    }),
+  });
+  
+  const { digest } = await response.json();
+  console.log('Transaction sponsored:', digest);
+}
+```
+
+### Server Side
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import express from 'express';
+
+const app = express();
+const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+const sponsorKeypair = Ed25519Keypair.fromSecretKey(process.env.SPONSOR_KEY!);
+
+app.post('/sponsor', async (req, res) => {
+  try {
+    const { transactionBytes, userSignature } = req.body;
+    
+    // Convert back to Uint8Array
+    const txBytes = new Uint8Array(transactionBytes);
+    
+    // Sponsor signs the transaction
+    const sponsorSignature = await sponsorKeypair.sign(txBytes);
+    
+    // Execute with both signatures
+    const result = await client.executeTransaction({
+      transaction: txBytes,
+      signature: [userSignature, sponsorSignature],
+    });
+    
+    res.json({ digest: result.digest });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.listen(3000, () => {
+  console.log('Sponsor server running on port 3000');
+});
+```
+
+## Gas Budget Management
+
+Control gas budget for sponsored transactions:
+
+```typescript
+const tx = new Transaction();
+tx.transferObjects([objectId], recipientAddress);
+
+// Set gas budget (in NANOS)
+tx.setGasBudget(10000000);
+
+// Set gas price
+tx.setGasPrice(1000);
+
+// Sponsor provides gas payment
+const sponsorCoins = await client.getCoins({ owner: sponsorAddress });
+tx.setGasPayment([
+  {
+    objectId: sponsorCoins.data[0].coinObjectId,
+    version: sponsorCoins.data[0].version,
+    digest: sponsorCoins.data[0].digest,
+  },
+]);
+```
+
+## Multisig Sponsored Transactions
+
+Combine multisig with sponsored transactions:
+
+```typescript
+import { MultiSigPublicKey } from '@iota/iota-sdk/multisig';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+
+// Create multisig
+const keypair1 = new Ed25519Keypair();
+const keypair2 = new Ed25519Keypair();
+const sponsorKeypair = new Ed25519Keypair();
+
+const multisigPublicKey = MultiSigPublicKey.fromPublicKeys({
+  threshold: 2,
+  publicKeys: [
+    { publicKey: keypair1.getPublicKey(), weight: 1 },
+    { publicKey: keypair2.getPublicKey(), weight: 1 },
+  ],
+});
+
+const multisigAddress = multisigPublicKey.toIotaAddress();
+
+// Create transaction
+const tx = new Transaction();
+tx.transferObjects([objectId], recipientAddress);
+tx.setSender(multisigAddress);
+
+// Sponsor provides gas
+const sponsorCoins = await client.getCoins({ 
+  owner: sponsorKeypair.getPublicKey().toIotaAddress(),
+});
+
+tx.setGasPayment([
+  {
+    objectId: sponsorCoins.data[0].coinObjectId,
+    version: sponsorCoins.data[0].version,
+    digest: sponsorCoins.data[0].digest,
+  },
+]);
+
+// Build transaction
+const txBytes = await tx.build({ client });
+
+// Multisig parties sign
+const sig1 = await keypair1.sign(txBytes);
+const sig2 = await keypair2.sign(txBytes);
+
+// Combine multisig signatures
+const multisigSignature = multisigPublicKey.combinePartialSignatures([sig1, sig2]);
+
+// Sponsor signs
+const sponsorSignature = await sponsorKeypair.sign(txBytes);
+
+// Execute with multisig + sponsor signatures
+const result = await client.executeTransaction({
+  transaction: txBytes,
+  signature: [multisigSignature, sponsorSignature],
+});
+
+console.log('Multisig sponsored transaction:', result.digest);
+```
+
+## Validating Sponsor Requests
+
+Implement validation logic on the sponsor server:
+
+```typescript
+interface SponsorRequest {
+  transactionBytes: number[];
+  userSignature: string;
+  userAddress: string;
+}
+
+async function validateSponsorRequest(request: SponsorRequest): Promise<boolean> {
+  const { transactionBytes, userSignature, userAddress } = request;
+  
+  // 1. Verify user signature
+  const txBytes = new Uint8Array(transactionBytes);
+  const isValid = await verifySignature(txBytes, userSignature, userAddress);
+  
+  if (!isValid) {
+    throw new Error('Invalid user signature');
+  }
+  
+  // 2. Check rate limits
+  const rateLimitOk = await checkRateLimit(userAddress);
+  if (!rateLimitOk) {
+    throw new Error('Rate limit exceeded');
+  }
+  
+  // 3. Validate transaction content
+  // Parse and validate the transaction doesn't do anything malicious
+  
+  // 4. Check gas budget is reasonable
+  const tx = Transaction.from(txBytes);
+  const gasBudget = tx.getData().gasData?.budget;
+  
+  if (gasBudget && gasBudget > MAX_GAS_BUDGET) {
+    throw new Error('Gas budget too high');
+  }
+  
+  return true;
+}
+```
+
+## Dry Run Sponsored Transactions
+
+Test sponsored transactions before execution:
+
+```typescript
+import { Transaction } from '@iota/iota-sdk/transactions';
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+
+const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+
+// Create transaction
+const tx = new Transaction();
+tx.transferObjects([objectId], recipientAddress);
+tx.setSender(userAddress);
+
+// Set sponsor gas
+const sponsorCoins = await client.getCoins({ owner: sponsorAddress });
+tx.setGasPayment([
+  {
+    objectId: sponsorCoins.data[0].coinObjectId,
+    version: sponsorCoins.data[0].version,
+    digest: sponsorCoins.data[0].digest,
+  },
+]);
+
+// Build transaction
+const txBytes = await tx.build({ client });
+
+// Dry run to check if transaction would succeed
+const dryRunResult = await client.dryRunTransactionBlock({
+  transactionBlock: txBytes,
+});
+
+if (dryRunResult.effects.status.status === 'success') {
+  console.log('Transaction will succeed');
+  console.log('Gas used:', dryRunResult.effects.gasUsed);
+  
+  // Proceed with signing and execution
+} else {
+  console.error('Transaction will fail:', dryRunResult.effects.status.error);
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Validate User Transactions">
+    Always validate user transactions before sponsoring:
+    
+    ```typescript
+    async function shouldSponsor(tx: Transaction): Promise<boolean> {
+      // Check transaction type
+      const commands = tx.getData().commands;
+      
+      // Only sponsor specific transaction types
+      const allowedCommands = ['TransferObjects', 'SplitCoins'];
+      const hasDisallowedCommands = commands.some(
+        cmd => !allowedCommands.includes(cmd.$kind)
+      );
+      
+      if (hasDisallowedCommands) {
+        return false;
+      }
+      
+      // Additional validation...
+      return true;
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Implement Rate Limiting">
+    Prevent abuse with rate limiting:
+    
+    ```typescript
+    const rateLimits = new Map<string, number>();
+    
+    function checkRateLimit(address: string): boolean {
+      const now = Date.now();
+      const lastRequest = rateLimits.get(address) || 0;
+      
+      // Allow 1 sponsored tx per minute
+      if (now - lastRequest < 60000) {
+        return false;
+      }
+      
+      rateLimits.set(address, now);
+      return true;
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Set Gas Limits">
+    Limit gas costs to prevent excessive charges:
+    
+    ```typescript
+    const MAX_GAS_BUDGET = 100000000; // 100M NANOS
+    
+    const tx = new Transaction();
+    tx.setGasBudget(MAX_GAS_BUDGET);
+    
+    // Validate budget before sponsoring
+    if (tx.getData().gasData?.budget > MAX_GAS_BUDGET) {
+      throw new Error('Gas budget exceeds limit');
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Monitor Sponsor Balance">
+    Keep track of sponsor account balance:
+    
+    ```typescript
+    async function checkSponsorBalance(): Promise<boolean> {
+      const balance = await client.getBalance({
+        owner: sponsorAddress,
+      });
+      
+      const minBalance = BigInt('1000000000'); // 1 IOTA
+      
+      if (BigInt(balance.totalBalance) < minBalance) {
+        console.warn('Sponsor balance low!');
+        // Alert administrators
+        return false;
+      }
+      
+      return true;
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Security Considerations
+
+<Warning>
+- **Validate all transactions** before sponsoring
+- **Implement rate limiting** to prevent abuse
+- **Set maximum gas budgets** to control costs
+- **Monitor sponsor account balance** regularly
+- **Log all sponsored transactions** for auditing
+- **Use separate sponsor accounts** for different applications
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Transactions" icon="exchange" href="./transactions">
+    Learn more about transaction building
+  </Card>
+  <Card title="Signing" icon="pen" href="./signing">
+    Understand transaction signing
+  </Card>
+  <Card title="Multisig" icon="users" href="./multisig">
+    Combine with multisig functionality
+  </Card>
+  <Card title="Examples" icon="code" href="./examples">
+    See complete examples
+  </Card>
+</CardGroup>

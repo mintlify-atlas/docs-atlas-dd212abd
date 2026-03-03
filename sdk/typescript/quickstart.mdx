@@ -1,0 +1,229 @@
+---
+title: Quick Start
+description: Get started with the IOTA TypeScript SDK in minutes
+---
+
+This guide will help you quickly set up the IOTA TypeScript SDK and execute your first transaction.
+
+## Prerequisites
+
+- Node.js >= 24 installed
+- Basic understanding of TypeScript/JavaScript
+- A code editor (VS Code recommended)
+
+## Installation
+
+First, install the SDK:
+
+<CodeGroup>
+```bash npm
+npm install @iota/iota-sdk
+```
+
+```bash yarn
+yarn add @iota/iota-sdk
+```
+
+```bash pnpm
+pnpm add @iota/iota-sdk
+```
+</CodeGroup>
+
+## Basic Setup
+
+Create a new TypeScript file and import the required modules:
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+import { getFaucetHost, requestIotaFromFaucetV0 } from '@iota/iota-sdk/faucet';
+```
+
+## Complete Working Example
+
+Here's a complete example that connects to the network, requests tokens from the faucet, and transfers IOTA:
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+import { getFaucetHost, requestIotaFromFaucetV0 } from '@iota/iota-sdk/faucet';
+
+async function main() {
+  // 1. Create a client connected to devnet
+  const client = new IotaClient({ url: getFullnodeUrl('devnet') });
+
+  // 2. Generate a new Ed25519 keypair
+  const keypair = new Ed25519Keypair();
+  const address = keypair.getPublicKey().toIotaAddress();
+  
+  console.log('Generated address:', address);
+
+  // 3. Request IOTA tokens from the faucet
+  await requestIotaFromFaucetV0({
+    host: getFaucetHost('testnet'),
+    recipient: address,
+  });
+  
+  console.log('Requested tokens from faucet');
+
+  // 4. Check balance
+  const balance = await client.getBalance({
+    owner: address,
+  });
+  
+  console.log('Balance:', balance);
+
+  // 5. Create and execute a transaction
+  const tx = new Transaction();
+  
+  // Split 1000 NANOS from gas coin
+  const [coin] = tx.splitCoins(tx.gas, [1000]);
+  
+  // Transfer to self (you can change this to any address)
+  tx.transferObjects([coin], address);
+
+  // 6. Sign and execute the transaction
+  const result = await client.signAndExecuteTransaction({
+    signer: keypair,
+    transaction: tx,
+  });
+  
+  console.log('Transaction result:', result);
+  console.log('Transaction digest:', result.digest);
+}
+
+main().catch(console.error);
+```
+
+## Step-by-Step Breakdown
+
+### 1. Connect to the Network
+
+```typescript
+const client = new IotaClient({ url: getFullnodeUrl('devnet') });
+```
+
+The `getFullnodeUrl()` helper provides default URLs for:
+- `'localnet'` - `http://127.0.0.1:9000`
+- `'devnet'` - `https://api.devnet.iota.cafe`
+
+### 2. Generate a Keypair
+
+```typescript
+const keypair = new Ed25519Keypair();
+const address = keypair.getPublicKey().toIotaAddress();
+```
+
+This creates a new Ed25519 keypair and derives the IOTA address.
+
+### 3. Request Tokens
+
+```typescript
+await requestIotaFromFaucetV0({
+  host: getFaucetHost('testnet'),
+  recipient: address,
+});
+```
+
+Request test tokens from the faucet (works on testnet, devnet, and localnet).
+
+### 4. Build a Transaction
+
+```typescript
+const tx = new Transaction();
+const [coin] = tx.splitCoins(tx.gas, [1000]);
+tx.transferObjects([coin], address);
+```
+
+Build a transaction that:
+1. Splits 1000 NANOS from the gas coin
+2. Transfers it to the specified address
+
+### 5. Execute the Transaction
+
+```typescript
+const result = await client.signAndExecuteTransaction({
+  signer: keypair,
+  transaction: tx,
+});
+```
+
+Sign with the keypair and submit to the network.
+
+## Network Options
+
+Connect to different networks:
+
+<Tabs>
+  <Tab title="Devnet">
+    ```typescript
+    const client = new IotaClient({ url: getFullnodeUrl('devnet') });
+    ```
+  </Tab>
+  <Tab title="Testnet">
+    ```typescript
+    const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+    ```
+  </Tab>
+  <Tab title="Localnet">
+    ```typescript
+    const client = new IotaClient({ url: getFullnodeUrl('localnet') });
+    ```
+  </Tab>
+  <Tab title="Custom">
+    ```typescript
+    const client = new IotaClient({
+      url: 'https://fullnode.devnet.iota.org',
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Common Operations
+
+### Get Coins
+
+```typescript
+const coins = await client.getCoins({
+  owner: '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+});
+```
+
+### Get Objects
+
+```typescript
+const objects = await client.getOwnedObjects({
+  owner: '0xcc2bd176a478baea9a0de7a24cd927661cc6e860d5bacecb9a138ef20dbab231',
+});
+```
+
+### Get Transaction Details
+
+```typescript
+const txn = await client.getTransaction({
+  digest: '9XFneskU8tW7UxQf7tE5qFRfcN4FadtC2Z3HAZkgeETd=',
+  options: {
+    showEffects: true,
+    showInput: true,
+  },
+});
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Client Setup" icon="gear" href="./client-setup">
+    Learn more about configuring the IotaClient
+  </Card>
+  <Card title="Transactions" icon="exchange" href="./transactions">
+    Deep dive into transaction building
+  </Card>
+  <Card title="Reading Data" icon="book" href="./reading-data">
+    Query blockchain data
+  </Card>
+  <Card title="Examples" icon="code" href="./examples">
+    Explore more code examples
+  </Card>
+</CardGroup>

@@ -1,0 +1,277 @@
+---
+title: Running a Validator Node
+description: Set up and operate an IOTA validator node to participate in consensus and earn rewards.
+---
+
+Validator nodes participate in the IOTA consensus protocol, validate transactions, and help secure the network. Running a validator requires staking IOTA tokens and maintaining high uptime.
+
+## Prerequisites
+
+### Hardware Requirements
+
+- **CPU:** 16+ cores (32+ recommended for production)
+- **RAM:** 64GB minimum (128GB recommended)
+- **Storage:** 2TB NVMe SSD
+- **Network:** 1Gbps connection with low latency
+- **Uptime:** 99.9%+ availability required
+
+### Software Requirements
+
+- Linux operating system (Ubuntu 22.04 LTS recommended)
+- Docker or ability to build from source
+- IOTA tokens for staking
+
+<Warning>
+  Running a validator requires significant technical expertise and resources. Ensure you understand the responsibilities and risks before proceeding.
+</Warning>
+
+## Initial Setup
+
+<Steps>
+  <Step title="Generate validator keys">
+    Create the required keypairs for your validator:
+    
+    ```bash
+    # Generate authority keypair (consensus)
+    iota keytool generate ed25519
+    
+    # Generate network keypair (P2P networking)
+    iota keytool generate ed25519
+    
+    # Generate protocol keypair
+    iota keytool generate ed25519
+    
+    # Generate account keypair
+    iota keytool generate ed25519
+    ```
+    
+    Store these keys securely. They cannot be recovered if lost.
+  </Step>
+
+  <Step title="Create validator configuration">
+    Create a `validator.yaml` configuration file:
+    
+    ```yaml
+    # Authority keypair for signing consensus messages
+    authority-key-pair:
+      path: /path/to/authority.key
+    
+    # Protocol keypair for consensus
+    protocol-key-pair:
+      path: /path/to/protocol.key
+    
+    # Network keypair for P2P
+    network-key-pair:
+      path: /path/to/network.key
+    
+    # Account keypair
+    account-key-pair:
+      path: /path/to/account.key
+    
+    # Database path
+    db-path: /iota/db
+    
+    # Network address for gRPC
+    network-address: "/ip4/0.0.0.0/tcp/8080"
+    
+    # Metrics address
+    metrics-address: "0.0.0.0:9184"
+    
+    # JSON-RPC address  
+    json-rpc-address: "0.0.0.0:9000"
+    
+    # Admin interface (localhost only)
+    admin-interface-address: "127.0.0.1:1337"
+    
+    # Enable index processing
+    enable-index-processing: false
+    
+    # Consensus configuration
+    consensus-config:
+      db-path: /iota/consensus-db
+      db-retention-epochs: 3
+      max-pending-transactions: 20000
+    
+    # P2P configuration
+    p2p-config:
+      listen-address: "0.0.0.0:8084"
+      external-address: "/dns/your-validator.example.com/tcp/8084"
+      seed-peers: []
+    
+    # Genesis file
+    genesis-file-location: /iota/genesis.blob
+    ```
+  </Step>
+
+  <Step title="Download genesis blob">
+    Download the network genesis file:
+    
+    ```bash
+    # For mainnet
+    wget https://github.com/iotaledger/iota/raw/main/crates/iota-genesis-builder/genesis/mainnet.blob \
+      -O /iota/genesis.blob
+    ```
+  </Step>
+
+  <Step title="Start the validator node">
+    Using Docker:
+    
+    ```bash
+    docker run -d \
+      --name iota-validator \
+      --restart unless-stopped \
+      -v $HOME/iota-data:/iota/db \
+      -v $HOME/consensus-db:/iota/consensus-db \
+      -v $HOME/validator.yaml:/iota/validator.yaml \
+      -v $HOME/keys:/iota/keys \
+      -v $HOME/genesis.blob:/iota/genesis.blob \
+      -p 8080:8080 \
+      -p 8084:8084 \
+      -p 9000:9000 \
+      -p 9184:9184 \
+      iotaledger/iota-node:latest \
+      iota-node --config-path /iota/validator.yaml
+    ```
+  </Step>
+</Steps>
+
+## Validator Configuration
+
+### Gas Price Configuration
+
+Validators can set their gas price reference:
+
+```yaml
+# In validator.yaml - defaults shown
+authority-overload-config:
+  # Default validator gas price: 1000 Nanos
+  # Set via environment or config
+```
+
+The default validator gas price is `1000` Nanos (defined in `DEFAULT_VALIDATOR_GAS_PRICE`).
+
+### Commission Rate
+
+Set your commission rate (percentage of staking rewards):
+
+```yaml
+# Default commission rate is 2% (200 basis points)
+# Defined in DEFAULT_COMMISSION_RATE
+```
+
+### Consensus Protocol
+
+IOTA supports two consensus protocols:
+
+```yaml
+consensus-config:
+  # Mysticeti (default)
+  parameters:
+    # Mysticeti-specific parameters
+  
+  # OR Starfish (alternative)
+  starfish-parameters:
+    # Starfish-specific parameters
+```
+
+## Joining the Network
+
+<Steps>
+  <Step title="Stake IOTA tokens">
+    Use the IOTA CLI or wallet to stake tokens with your validator address:
+    
+    ```bash
+    iota client call \
+      --package 0x3 \
+      --module iota_system \
+      --function request_add_validator_candidate
+    ```
+  </Step>
+
+  <Step title="Wait for epoch change">
+    Your validator will become active at the next epoch boundary after meeting minimum stake requirements.
+  </Step>
+
+  <Step title="Monitor validator status">
+    Check your validator's status:
+    
+    ```bash
+    curl http://localhost:9000 -X POST \
+      -H 'Content-Type: application/json' \
+      -d '{"jsonrpc":"2.0","id":1,"method":"iota_getValidators"}'
+    ```
+  </Step>
+</Steps>
+
+## Performance Optimization
+
+### Execution Cache
+
+Configure the execution cache for optimal performance:
+
+```yaml
+execution-cache: writeback-cache  # or passthrough-cache
+
+execution-cache-config:
+  writeback-cache:
+    max-cache-size: 100000
+    package-cache-size: 1000
+    transaction-cache-size: 100000
+    backpressure-threshold: 100000
+```
+
+### Environment Variables
+
+Key environment variables for cache tuning:
+
+- `IOTA_CACHE_WRITEBACK_SIZE_MAX`: Maximum cache size
+- `IOTA_CACHE_WRITEBACK_SIZE_PACKAGE`: Package cache size
+- `IOTA_CACHE_WRITEBACK_SIZE_OBJECT`: Object cache size
+- `IOTA_CACHE_WRITEBACK_BACKPRESSURE_THRESHOLD`: Backpressure threshold
+- `DISABLE_WRITEBACK_CACHE`: Disable writeback cache (use passthrough)
+
+## Monitoring and Maintenance
+
+### Critical Metrics
+
+Monitor these key metrics:
+
+- **Consensus participation:** Track participation in consensus rounds
+- **Transaction throughput:** Monitor transactions processed per second
+- **Checkpoint creation:** Verify checkpoint signing and creation
+- **Network connectivity:** Ensure P2P connections are healthy
+- **System resources:** Monitor CPU, memory, and disk usage
+
+See [Monitoring](/nodes/monitoring) for detailed metrics setup.
+
+### Database Maintenance
+
+```yaml
+# Pruning configuration
+authority-store-pruning-config:
+  num-latest-epoch-dbs-to-retain: 3
+  epoch-db-pruning-period-secs: 3600
+  num-epochs-to-retain: 0  # Aggressive pruning
+  max-checkpoints-in-batch: 10
+  max-transactions-in-batch: 1000
+  periodic-compaction-threshold-days: 1
+```
+
+<Warning>
+  Setting `num-epochs-to-retain: 0` enables aggressive pruning mode. Use with caution and ensure you understand the implications.
+</Warning>
+
+## Security Best Practices
+
+- Store validator keys in secure, encrypted storage
+- Use firewall rules to restrict access to admin ports
+- Enable only necessary JSON-RPC methods
+- Regularly update to the latest node version
+- Monitor for unusual activity or performance degradation
+- Maintain secure backups of validator keys and configuration
+
+## Next Steps
+
+- [Configure advanced settings](/nodes/configuration)
+- [Set up comprehensive monitoring](/nodes/monitoring)
+- [Learn to troubleshoot issues](/nodes/troubleshooting)

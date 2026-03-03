@@ -1,0 +1,339 @@
+---
+title: Transfer Module
+description: Functions for transferring object ownership and managing object lifecycle on IOTA
+---
+
+# Transfer Module
+
+The `iota::transfer` module provides functions for transferring object ownership between addresses and converting objects between different ownership models (owned, shared, frozen).
+
+Source: `crates/iota-framework/packages/iota-framework/sources/transfer.move`
+
+## Core Concepts
+
+### Ownership Models
+
+IOTA objects can have three ownership states:
+
+1. **Owned**: Owned by a specific address
+2. **Shared**: Accessible by anyone (mutable or immutable)
+3. **Frozen**: Immutable, cannot be modified or transferred
+
+### Receiving Type
+
+```move
+public struct Receiving<phantom T: key> has drop {
+    id: ID,
+    version: u64,
+}
+```
+
+Represents the ability to receive an object of type `T`. This is ephemeral and cannot be stored on-chain.
+
+## Transferring Objects
+
+### transfer
+
+Transfer ownership of an object to a recipient address:
+
+<ParamField path="obj" type="T" required>
+  The object to transfer (must have `key` ability)
+</ParamField>
+
+<ParamField path="recipient" type="address" required>
+  The address to transfer the object to
+</ParamField>
+
+```move
+public fun transfer<T: key>(obj: T, recipient: address)
+```
+
+This function has custom bytecode verification that ensures `T` is defined in the calling module. Use `public_transfer` for objects with `store`.
+
+Example:
+```move
+module example::my_module {
+    use iota::transfer;
+
+    public struct MyObject has key {
+        id: UID,
+        value: u64,
+    }
+
+    public fun transfer_object(obj: MyObject, recipient: address) {
+        transfer::transfer(obj, recipient);
+    }
+}
+```
+
+### public_transfer
+
+Transfer an object with the `store` ability to a recipient:
+
+<ParamField path="obj" type="T" required>
+  The object to transfer (must have `key + store`)
+</ParamField>
+
+<ParamField path="recipient" type="address" required>
+  The address to transfer the object to
+</ParamField>
+
+```move
+public fun public_transfer<T: key + store>(obj: T, recipient: address)
+```
+
+Use this for objects that have the `store` ability and can be transferred outside their defining module.
+
+Example:
+```move
+use iota::coin::Coin;
+use iota::iota::IOTA;
+
+// Coins have `store`, so use public_transfer
+public fun send_coin(coin: Coin<IOTA>, recipient: address) {
+    transfer::public_transfer(coin, recipient);
+}
+```
+
+## Sharing Objects
+
+### share_object
+
+Make an object mutable and shared - accessible by anyone:
+
+<ParamField path="obj" type="T" required>
+  The object to share (must have `key`)
+</ParamField>
+
+```move
+public fun share_object<T: key>(obj: T)
+```
+
+Once shared, an object stays shared forever. The object must be newly created in the current transaction.
+
+Example:
+```move
+public struct SharedCounter has key {
+    id: UID,
+    count: u64,
+}
+
+public fun create_shared_counter(ctx: &mut TxContext) {
+    let counter = SharedCounter {
+        id: object::new(ctx),
+        count: 0,
+    };
+    transfer::share_object(counter);
+}
+
+public fun increment(counter: &mut SharedCounter) {
+    counter.count = counter.count + 1;
+}
+```
+
+### public_share_object
+
+Share an object with the `store` ability:
+
+<ParamField path="obj" type="T" required>
+  The object to share (must have `key + store`)
+</ParamField>
+
+```move
+public fun public_share_object<T: key + store>(obj: T)
+```
+
+## Freezing Objects
+
+### freeze_object
+
+Make an object immutable - it can no longer be transferred or mutated:
+
+<ParamField path="obj" type="T" required>
+  The object to freeze (must have `key`)
+</ParamField>
+
+```move
+public fun freeze_object<T: key>(obj: T)
+```
+
+Example:
+```move
+public struct ImmutableData has key {
+    id: UID,
+    data: vector<u8>,
+}
+
+public fun create_immutable_data(data: vector<u8>, ctx: &mut TxContext) {
+    let obj = ImmutableData {
+        id: object::new(ctx),
+        data,
+    };
+    transfer::freeze_object(obj);
+}
+```
+
+### public_freeze_object
+
+Freeze an object with the `store` ability:
+
+<ParamField path="obj" type="T" required>
+  The object to freeze (must have `key + store`)
+</ParamField>
+
+```move
+public fun public_freeze_object<T: key + store>(obj: T)
+```
+
+## Receiving Objects
+
+### receive
+
+Receive an object that was transferred to another object you own:
+
+<ParamField path="parent" type="&mut UID" required>
+  Mutable reference to the parent object's UID
+</ParamField>
+
+<ParamField path="to_receive" type="Receiving<T>" required>
+  The receiving capability for the object
+</ParamField>
+
+```move
+public fun receive<T: key>(parent: &mut UID, to_receive: Receiving<T>): T
+```
+
+Example:
+```move
+public struct Parent has key {
+    id: UID,
+}
+
+public struct Child has key, store {
+    id: UID,
+    value: u64,
+}
+
+public fun receive_child(parent: &mut Parent, to_receive: Receiving<Child>): Child {
+    transfer::receive(&mut parent.id, to_receive)
+}
+```
+
+### public_receive
+
+Receive an object with the `store` ability:
+
+<ParamField path="parent" type="&mut UID" required>
+  Mutable reference to the parent object's UID
+</ParamField>
+
+<ParamField path="to_receive" type="Receiving<T>" required>
+  The receiving capability for the object
+</ParamField>
+
+```move
+public fun public_receive<T: key + store>(parent: &mut UID, to_receive: Receiving<T>): T
+```
+
+### receiving_object_id
+
+Get the ID of the object referenced by a `Receiving` capability:
+
+<ParamField path="receiving" type="&Receiving<T>" required>
+  The receiving capability
+</ParamField>
+
+```move
+public fun receiving_object_id<T: key>(receiving: &Receiving<T>): ID
+```
+
+## Complete Example
+
+```move
+module example::game {
+    use iota::object::{Self, UID};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    // Owned object
+    public struct GameCharacter has key {
+        id: UID,
+        name: vector<u8>,
+        level: u64,
+    }
+
+    // Shared object
+    public struct GameBoard has key {
+        id: UID,
+        players: u64,
+    }
+
+    // Immutable object
+    public struct GameRules has key {
+        id: UID,
+        rules: vector<u8>,
+    }
+
+    // Create an owned character
+    public fun create_character(name: vector<u8>, ctx: &mut TxContext) {
+        let character = GameCharacter {
+            id: object::new(ctx),
+            name,
+            level: 1,
+        };
+        transfer::transfer(character, ctx.sender());
+    }
+
+    // Transfer character to another player
+    public fun transfer_character(character: GameCharacter, new_owner: address) {
+        transfer::transfer(character, new_owner);
+    }
+
+    // Create a shared game board
+    public fun create_game_board(ctx: &mut TxContext) {
+        let board = GameBoard {
+            id: object::new(ctx),
+            players: 0,
+        };
+        transfer::share_object(board);
+    }
+
+    // Anyone can join the game
+    public fun join_game(board: &mut GameBoard) {
+        board.players = board.players + 1;
+    }
+
+    // Create immutable game rules
+    public fun create_rules(rules: vector<u8>, ctx: &mut TxContext) {
+        let rules_obj = GameRules {
+            id: object::new(ctx),
+            rules,
+        };
+        transfer::freeze_object(rules_obj);
+    }
+}
+```
+
+## Error Codes
+
+```move
+const ESharedNonNewObject: u64 = 0;  // Shared an object that was not newly created
+const EBCSSerializationFailure: u64 = 1;  // Serialization failed
+const EReceivingObjectTypeMismatch: u64 = 2;  // Wrong type for receiving
+const EUnableToReceiveObject: u64 = 3;  // Object doesn't exist or can't be accessed
+const ESharedObjectOperationNotSupported: u64 = 4;  // Operation not allowed on shared objects
+const EAccountCannotReceiveObject: u64 = 5;  // Accounts can't receive objects
+```
+
+## Best Practices
+
+1. **Use `transfer` for module-internal types**: If the type is defined in your module and doesn't have `store`, use `transfer` instead of `public_transfer`
+
+2. **Share objects carefully**: Once an object is shared, it stays shared forever and anyone can access it
+
+3. **Freeze for immutability**: Use `freeze_object` when you want to create immutable reference data
+
+4. **Consider ownership models**: Choose the right ownership model based on your use case:
+   - **Owned**: For user-specific assets (NFTs, account objects)
+   - **Shared**: For global state (registries, game boards)
+   - **Frozen**: For immutable data (rules, configurations)

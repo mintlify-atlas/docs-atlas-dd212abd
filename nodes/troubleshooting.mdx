@@ -1,0 +1,506 @@
+---
+title: Troubleshooting Common Issues
+description: Diagnose and resolve common problems when running IOTA nodes.
+---
+
+This guide covers common issues encountered when operating IOTA nodes and their solutions.
+
+## Node Won't Start
+
+### Missing Configuration File
+
+**Symptom:** Error message about missing or invalid configuration file
+
+**Solution:**
+```bash
+# Verify config file exists
+ls -l /path/to/node.yaml
+
+# Validate YAML syntax
+yamllint /path/to/node.yaml
+
+# Check file permissions
+chmod 644 /path/to/node.yaml
+```
+
+### Invalid Keypair Files
+
+**Symptom:** Panic with message about invalid keypair file
+
+**Solution:**
+```bash
+# Verify keypair files exist
+ls -l /path/to/keys/
+
+# Check file permissions
+chmod 600 /path/to/keys/*.key
+
+# Regenerate keypairs if corrupted
+iota keytool generate ed25519
+```
+
+<Warning>
+  Never share or expose your keypair files. Store them securely with restricted permissions.
+</Warning>
+
+### Genesis File Issues
+
+**Symptom:** Error loading genesis file
+
+**Solution:**
+```bash
+# Verify genesis file
+ls -l /path/to/genesis.blob
+
+# Re-download genesis for your network
+wget https://github.com/iotaledger/iota/raw/main/crates/iota-genesis-builder/genesis/mainnet.blob
+
+# Verify checksum (if provided)
+sha256sum genesis.blob
+```
+
+## Database Issues
+
+### Corrupted Database
+
+**Symptom:** Node crashes on startup with database errors
+
+**Solution:**
+
+<Steps>
+  <Step title="Backup existing database">
+    ```bash
+    cp -r /var/lib/iota/db /var/lib/iota/db.backup
+    ```
+  </Step>
+
+  <Step title="Clear database and resync">
+    ```bash
+    # Stop the node
+    docker stop iota-node
+    
+    # Remove database
+    rm -rf /var/lib/iota/db
+    
+    # Restart node (will resync from network)
+    docker start iota-node
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Resyncing from scratch can take several hours to days depending on the blockchain size and your network speed.
+</Warning>
+
+### Disk Space Full
+
+**Symptom:** Database write errors, node stops processing
+
+**Solution:**
+```bash
+# Check disk usage
+df -h /var/lib/iota
+
+# Enable aggressive pruning
+# In node.yaml:
+authority-store-pruning-config:
+  num-epochs-to-retain: 0
+  num-epochs-to-retain-for-checkpoints: 2
+
+# Or expand disk space
+```
+
+### Write Stall
+
+**Symptom:** Node becomes unresponsive, high disk I/O wait
+
+**Solution:**
+```yaml
+# Disable write stall for fullnodes (in node.yaml)
+enable-db-write-stall: false
+
+# For validators, optimize disk I/O:
+# - Use NVMe SSD
+# - Tune RocksDB settings
+# - Enable periodic compaction
+authority-store-pruning-config:
+  periodic-compaction-threshold-days: 1
+```
+
+## Network Connectivity Issues
+
+### No Peers Connected
+
+**Symptom:** Node can't sync, peer count is zero
+
+**Solution:**
+
+<Steps>
+  <Step title="Check firewall rules">
+    ```bash
+    # Allow P2P port
+    ufw allow 8084/tcp
+    
+    # Verify port is listening
+    netstat -tlnp | grep 8084
+    ```
+  </Step>
+
+  <Step title="Configure seed peers">
+    ```yaml
+    # In node.yaml
+    p2p-config:
+      seed-peers:
+        - address: "/dns/seed1.iota.org/tcp/8084"
+        - address: "/dns/seed2.iota.org/tcp/8084"
+    ```
+  </Step>
+
+  <Step title="Check external address">
+    ```yaml
+    # Ensure external address is reachable
+    p2p-config:
+      external-address: "/dns/your-node.example.com/tcp/8084"
+    ```
+  </Step>
+</Steps>
+
+### Slow Synchronization
+
+**Symptom:** Node syncing slower than expected
+
+**Solution:**
+```yaml
+# Increase concurrency in node.yaml
+p2p-config:
+  state-sync:
+    checkpoint-header-download-concurrency: 800
+    checkpoint-content-download-concurrency: 800
+    checkpoint-content-download-tx-concurrency: 100000
+```
+
+### Connection Timeouts
+
+**Symptom:** Frequent timeout errors in logs
+
+**Solution:**
+```yaml
+p2p-config:
+  state-sync:
+    # Increase timeouts (in milliseconds)
+    timeout-ms: 20000
+    checkpoint-content-timeout-ms: 120000
+```
+
+## Performance Issues
+
+### High CPU Usage
+
+**Symptom:** CPU constantly at 100%
+
+**Diagnosis:**
+```bash
+# Check which process is using CPU
+top -p $(pgrep iota-node)
+
+# Review metrics
+curl http://localhost:9184/metrics | grep -E "(scope|future|task)"
+```
+
+**Solution:**
+- Verify hardware meets requirements
+- Check for thread stalls in metrics
+- Reduce concurrent operations:
+
+```yaml
+checkpoint-executor-config:
+  checkpoint-execution-max-concurrency: 20  # Reduce from default 40
+```
+
+### High Memory Usage
+
+**Symptom:** Node using excessive RAM, potential OOM kills
+
+**Solution:**
+```yaml
+# Reduce cache sizes
+execution-cache-config:
+  writeback-cache:
+    max-cache-size: 50000  # Default: 100000
+    transaction-cache-size: 50000
+    object-cache-size: 50000
+```
+
+Or use environment variables:
+```bash
+export IOTA_CACHE_WRITEBACK_SIZE_MAX=50000
+export IOTA_CACHE_WRITEBACK_SIZE_TRANSACTION=50000
+export IOTA_CACHE_WRITEBACK_SIZE_OBJECT=50000
+```
+
+### Thread Stalls
+
+**Symptom:** `thread_stall_duration_sec` metric increasing
+
+**Diagnosis:**
+```promql
+# Check stall frequency
+rate(thread_stall_duration_sec_count[5m])
+
+# Check stall duration
+rate(thread_stall_duration_sec_sum[5m]) / rate(thread_stall_duration_sec_count[5m])
+```
+
+**Solution:**
+- Review system load and I/O wait
+- Check for disk I/O bottlenecks
+- Ensure adequate CPU resources
+- Review logs for blocking operations
+
+## Validator-Specific Issues
+
+### Not Participating in Consensus
+
+**Symptom:** Validator not signing checkpoints
+
+**Diagnosis:**
+
+<Steps>
+  <Step title="Verify validator status">
+    ```bash
+    curl http://localhost:9000 -X POST \
+      -H 'Content-Type: application/json' \
+      -d '{"jsonrpc":"2.0","id":1,"method":"iota_getValidators"}' | jq
+    ```
+  </Step>
+
+  <Step title="Check stake amount">
+    Ensure your validator has sufficient stake and is in the active validator set.
+  </Step>
+
+  <Step title="Verify keypairs">
+    ```yaml
+    # Ensure correct keypairs are configured
+    authority-key-pair:
+      path: /path/to/authority.key
+    protocol-key-pair:
+      path: /path/to/protocol.key
+    ```
+  </Step>
+</Steps>
+
+### Consensus Database Growing Too Large
+
+**Symptom:** Consensus DB consuming excessive disk space
+
+**Solution:**
+```yaml
+consensus-config:
+  # Reduce retention
+  db-retention-epochs: 1
+  
+  # More frequent pruning
+  db-pruner-period-secs: 1800  # 30 minutes
+```
+
+### High Transaction Rejection Rate
+
+**Symptom:** Many transactions being rejected
+
+**Diagnosis:**
+```promql
+# Check load shedding metrics
+rate(grpc_requests{status!="Ok"}[5m])
+```
+
+**Solution:**
+```yaml
+# Adjust overload thresholds
+authority-overload-config:
+  max-transaction-manager-queue-length: 150000  # Increase from 100000
+  execution-queue-latency-soft-limit: 2s  # Increase tolerance
+```
+
+## API Issues
+
+### JSON-RPC Not Responding
+
+**Symptom:** RPC requests timeout or fail
+
+**Diagnosis:**
+```bash
+# Test JSON-RPC endpoint
+curl -v http://localhost:9000 -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"rpc.discover"}'
+
+# Check if port is listening
+netstat -tlnp | grep 9000
+```
+
+**Solution:**
+- Verify `json-rpc-address` in configuration
+- Check firewall rules
+- Review RPC-specific overload settings:
+
+```yaml
+execution-cache-config:
+  writeback-cache:
+    backpressure-threshold-for-rpc: 150000
+```
+
+### gRPC Connection Refused
+
+**Symptom:** gRPC clients cannot connect
+
+**Solution:**
+```yaml
+# Ensure gRPC API is enabled
+enable-grpc-api: true
+
+grpc-api-config:
+  address: "0.0.0.0:50051"
+  max-message-size-bytes: 134217728
+```
+
+```bash
+# Check port accessibility
+telnet localhost 50051
+```
+
+## Metrics and Monitoring Issues
+
+### Metrics Endpoint Not Accessible
+
+**Symptom:** Cannot access `http://localhost:9184/metrics`
+
+**Solution:**
+```yaml
+# Verify metrics address in node.yaml
+metrics-address: "0.0.0.0:9184"
+```
+
+```bash
+# Check port binding
+netstat -tlnp | grep 9184
+
+# Test locally
+curl http://127.0.0.1:9184/metrics
+```
+
+### Metrics Push Failing
+
+**Symptom:** Warnings about unable to push metrics
+
+**Solution:**
+```yaml
+metrics:
+  push-url: "https://valid-endpoint.example.com/push"
+  push-interval-seconds: 120  # Increase interval
+```
+
+Check logs for specific error messages about the push endpoint.
+
+## Log Analysis
+
+### Finding Errors in Logs
+
+```bash
+# For Docker deployments
+docker logs iota-node | grep -i error
+docker logs iota-node | grep -i panic
+docker logs iota-node | grep -i fatal
+
+# For systemd services
+journalctl -u iota-node | grep -i error
+
+# Filter by time
+docker logs --since 1h iota-node | grep -i error
+```
+
+### Common Error Messages
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| "Failed to load genesis" | Missing/invalid genesis file | Re-download genesis.blob |
+| "Invalid keypair file" | Corrupted or wrong key format | Regenerate keypairs |
+| "Database corruption" | Disk failure or improper shutdown | Restore from backup or resync |
+| "Connection refused" | Port not open or service not running | Check firewall and service status |
+| "Out of memory" | Insufficient RAM | Reduce cache sizes or add RAM |
+
+## Emergency Recovery
+
+### Node Completely Unresponsive
+
+<Steps>
+  <Step title="Collect diagnostics">
+    ```bash
+    # Save current logs
+    docker logs iota-node > node-crash-$(date +%Y%m%d-%H%M%S).log
+    
+    # Save metrics snapshot
+    curl http://localhost:9184/metrics > metrics-$(date +%Y%m%d-%H%M%S).txt
+    ```
+  </Step>
+
+  <Step title="Force restart">
+    ```bash
+    docker stop -t 30 iota-node  # Allow 30s for graceful shutdown
+    docker start iota-node
+    ```
+  </Step>
+
+  <Step title="Monitor recovery">
+    ```bash
+    docker logs -f iota-node
+    ```
+  </Step>
+</Steps>
+
+### Data Corruption After Crash
+
+<Warning>
+  If database corruption occurs repeatedly, there may be an underlying hardware issue (failing disk, bad RAM, etc.).
+</Warning>
+
+**Recovery procedure:**
+
+1. Stop the node
+2. Backup corrupted database
+3. Remove database directory
+4. Restore from latest checkpoint (if available)
+5. Otherwise, resync from network
+
+## Getting Help
+
+### Information to Include
+
+When seeking help, provide:
+
+1. Node version: `iota-node --version`
+2. Configuration (with sensitive data removed)
+3. Recent logs showing the error
+4. Relevant metrics snapshots
+5. System information: OS, CPU, RAM, disk
+6. Network: mainnet/testnet
+
+### Community Resources
+
+- IOTA Discord: Technical support channels
+- GitHub Issues: Bug reports and feature requests
+- Documentation: Official IOTA documentation
+
+## Preventive Measures
+
+1. **Regular backups**: Backup keypairs and critical data
+2. **Monitoring**: Set up alerts for critical metrics
+3. **Updates**: Keep node software up to date
+4. **Resource monitoring**: Track CPU, memory, disk usage trends
+5. **Log rotation**: Configure log rotation to prevent disk fill
+6. **Disaster recovery plan**: Document recovery procedures
+
+## Next Steps
+
+- Review [monitoring setup](/nodes/monitoring) to catch issues early
+- Optimize [node configuration](/nodes/configuration) for your use case
+- Understand [full node operations](/nodes/run-full-node)

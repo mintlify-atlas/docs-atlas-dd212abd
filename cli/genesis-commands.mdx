@@ -1,0 +1,662 @@
+---
+title: "Genesis Commands"
+description: "Complete reference for creating and managing IOTA network genesis configurations and ceremonies"
+---
+
+The genesis commands enable bootstrapping new IOTA networks and participating in genesis ceremonies for coordinated network launches.
+
+## Genesis Command
+
+Create a genesis configuration for a new IOTA network:
+
+```bash
+iota genesis [OPTIONS]
+```
+
+### Options
+
+- `--from-config <PATH>` - Start genesis with a given config file
+- `--write-config <PATH>` - Build genesis config, write to path, and exit
+- `--working-dir <PATH>` - Working directory for genesis files
+- `--force` or `-f` - Force overwrite existing configuration
+- `--epoch-duration-ms <MS>` - Set epoch duration in milliseconds
+- `--chain-start-timestamp-ms <MS>` - Set genesis chain start timestamp
+- `--with-faucet` - Create faucet configuration for persisted runs
+- `--committee-size <N>` - Number of validators (default: 1)
+
+### Basic Usage
+
+<Steps>
+  <Step title="Create default genesis">
+    ```bash
+    iota genesis --force
+    ```
+    
+    This creates:
+    - `~/.iota/iota_config/network.yaml` - Network configuration
+    - `~/.iota/iota_config/genesis.blob` - Genesis blob
+    - `~/.iota/iota_config/iota.keystore` - Validator keys
+  </Step>
+
+  <Step title="With custom parameters">
+    ```bash
+    iota genesis \
+      --force \
+      --committee-size 4 \
+      --epoch-duration-ms 86400000 \
+      --with-faucet
+    ```
+    
+    This creates a network with:
+    - 4 validators
+    - 24-hour epochs (86400000 ms)
+    - Faucet configuration
+  </Step>
+
+  <Step title="Custom working directory">
+    ```bash
+    iota genesis \
+      --working-dir ./my-network \
+      --force \
+      --committee-size 1
+    ```
+    
+    All files are created in `./my-network/`.
+  </Step>
+</Steps>
+
+### Benchmark Genesis
+
+Create genesis for benchmark testing:
+
+```bash
+iota genesis [OPTIONS] --benchmark-ips <IPS>
+```
+
+#### Options
+
+- `--benchmark-ips <IPS>` - Comma-separated list of validator IP addresses
+- `--num-additional-gas-accounts <N>` - Extra gas accounts for clients
+
+#### Example
+
+```bash
+iota genesis \
+  --force \
+  --benchmark-ips 10.0.0.1,10.0.0.2,10.0.0.3,10.0.0.4 \
+  --num-additional-gas-accounts 10 \
+  --epoch-duration-ms 3600000
+```
+
+This creates:
+- Network config for 4 validators at specified IPs
+- 10 additional gas accounts for dedicated clients
+- 1-hour epochs
+- Benchmark-specific genesis gas keystore
+
+### Migration Snapshots
+
+Create genesis with migration data:
+
+```bash
+iota genesis [OPTIONS] [MIGRATION_OPTIONS]
+```
+
+#### Migration Options
+
+- `--local-migration-snapshots <PATH>...` - Paths to local snapshot files
+- `--remote-migration-snapshots <URL>...` - Remote snapshot URLs
+- `--delegator <ADDRESS>` - Delegator address (required with snapshots)
+
+#### Example
+
+```bash
+iota genesis \
+  --force \
+  --committee-size 4 \
+  --local-migration-snapshots ./snapshot1.json ./snapshot2.json \
+  --delegator 0x1234567890abcdef1234567890abcdef12345678
+```
+
+<Note>
+  A delegator address is required when using migration snapshots. This account receives the migrated assets.
+</Note>
+
+### Config-Based Genesis
+
+Generate genesis from a configuration file:
+
+<Steps>
+  <Step title="Write genesis config">
+    ```bash
+    iota genesis --write-config ./genesis-config.yaml
+    ```
+    
+    This creates a template configuration file.
+  </Step>
+
+  <Step title="Edit configuration">
+    Customize `genesis-config.yaml` with your network parameters.
+  </Step>
+
+  <Step title="Build from config">
+    ```bash
+    iota genesis \
+      --from-config ./genesis-config.yaml \
+      --force
+    ```
+  </Step>
+</Steps>
+
+## Genesis Ceremony
+
+Coordinate a multi-validator genesis ceremony:
+
+```bash
+iota genesis-ceremony [OPTIONS] <SUBCOMMAND>
+```
+
+### Global Options
+
+- `--path <PATH>` - Directory for Genesis builder (defaults to current directory)
+- `--protocol-version <VERSION>` - Protocol version (defaults to latest)
+
+### Ceremony Workflow
+
+A genesis ceremony follows these steps:
+
+1. **Initialize** - Set up ceremony parameters
+2. **Add validators** - Each validator joins
+3. **Initialize token distribution** - Configure token allocations
+4. **Build unsigned checkpoint** - Create genesis checkpoint
+5. **Verify and sign** - Each validator verifies and signs
+6. **Finalize** - Generate final genesis blob
+
+### init
+
+Initialize a new genesis ceremony:
+
+```bash
+iota genesis-ceremony --path ./ceremony init
+```
+
+Output:
+```
+Initialized ceremony builder at ./ceremony/genesis-builder-parameters.yaml
+```
+
+This creates the ceremony directory with:
+```
+ceremony/
+└── genesis-builder-parameters.yaml
+```
+
+### add-validator
+
+Add a validator to the ceremony:
+
+```bash
+iota genesis-ceremony [OPTIONS] add-validator [VALIDATOR_OPTIONS]
+```
+
+#### Validator Options
+
+- `--name <NAME>` - Validator name (required)
+- `--authority-key-file <PATH>` - BLS12381 authority key file (required)
+- `--protocol-key-file <PATH>` - Ed25519 protocol key file (required)
+- `--account-key-file <PATH>` - Ed25519 account key file (required)
+- `--network-key-file <PATH>` - Ed25519 network key file (required)
+- `--network-address <MULTIADDR>` - Network address (required)
+- `--p2p-address <MULTIADDR>` - P2P address (required)
+- `--primary-address <MULTIADDR>` - Primary address (required)
+- `--description <TEXT>` - Validator description (optional)
+- `--image-url <URL>` - Validator image URL (optional)
+- `--project-url <URL>` - Validator project URL (optional)
+
+#### Example
+
+<Steps>
+  <Step title="Generate validator keys">
+    ```bash
+    # Generate authority key (BLS12381)
+    iota keytool generate bls12381
+    # Output: bls-0xabc...123.key
+    
+    # Generate protocol key (Ed25519)
+    iota keytool generate ed25519
+    # Output: 0xdef...456.key
+    
+    # Generate account key (Ed25519)
+    iota keytool generate ed25519
+    # Output: 0xghi...789.key
+    
+    # Generate network key (Ed25519)
+    iota keytool generate ed25519
+    # Output: 0xjkl...012.key
+    ```
+  </Step>
+
+  <Step title="Add validator to ceremony">
+    ```bash
+    iota genesis-ceremony --path ./ceremony add-validator \
+      --name validator-1 \
+      --authority-key-file ./bls-0xabc...123.key \
+      --protocol-key-file ./0xdef...456.key \
+      --account-key-file ./0xghi...789.key \
+      --network-key-file ./0xjkl...012.key \
+      --network-address "/dns/validator1.example.com/tcp/8080/http" \
+      --p2p-address "/dns/validator1.example.com/udp/8084/http" \
+      --primary-address "/dns/validator1.example.com/udp/8081/http" \
+      --description "Validator 1" \
+      --project-url "https://validator1.example.com"
+    ```
+    
+    Output:
+    ```
+    Successfully added validator
+    ```
+  </Step>
+
+  <Step title="Validate state">
+    ```bash
+    iota genesis-ceremony --path ./ceremony validate-state
+    ```
+    
+    Output:
+    ```
+    Successfully validated ceremony builder
+    ```
+  </Step>
+</Steps>
+
+### list-validators
+
+List all validators in the ceremony:
+
+```bash
+iota genesis-ceremony --path ./ceremony list-validators
+```
+
+Output:
+```
+Validator Name Account Address
+-------------- ----------------------------------------------------------------
+validator-1    0x1234567890abcdef1234567890abcdef12345678
+validator-2    0xabcdef0123456789abcdef0123456789abcdef01
+validator-3    0x9876543210fedcba9876543210fedcba98765432
+```
+
+### init-token-distribution-schedule
+
+Initialize token distribution from CSV:
+
+```bash
+iota genesis-ceremony [OPTIONS] init-token-distribution-schedule \
+  --token-allocations-path <CSV_FILE>
+```
+
+#### Token Allocations CSV Format
+
+```csv
+address,amount,staked_with_validator
+0x1234...,1000000000000000,0xabcd...
+0x5678...,500000000000000,
+```
+
+Columns:
+- `address` - Recipient address
+- `amount` - Amount in nanos
+- `staked_with_validator` - Optional validator address for staking
+
+#### Example
+
+```bash
+iota genesis-ceremony --path ./ceremony \
+  init-token-distribution-schedule \
+  --token-allocations-path ./allocations.csv
+```
+
+### init-delegations
+
+Initialize validator delegations:
+
+```bash
+iota genesis-ceremony [OPTIONS] init-delegations \
+  --delegations-path <CSV_FILE>
+```
+
+#### Delegations CSV Format
+
+```csv
+validator_address,delegator_address,amount
+0xvalidator1...,0xdelegator1...,1000000000000
+0xvalidator2...,0xdelegator2...,2000000000000
+```
+
+#### Example
+
+```bash
+iota genesis-ceremony --path ./ceremony \
+  init-delegations \
+  --delegations-path ./delegations.csv
+```
+
+### build-unsigned-checkpoint
+
+Build the unsigned genesis checkpoint:
+
+```bash
+iota genesis-ceremony [OPTIONS] build-unsigned-checkpoint [MIGRATION_OPTIONS]
+```
+
+#### Migration Options
+
+- `--local-migration-snapshots <PATH>...` - Local snapshot files
+- `--remote-migration-snapshots <URL>...` - Remote snapshot URLs
+
+#### Example
+
+```bash
+iota genesis-ceremony --path ./ceremony \
+  build-unsigned-checkpoint
+```
+
+Output:
+```
+Successfully built unsigned checkpoint: 5KzKVq7qP2xH8FwkQJqxhPNBjkFVjM3xZoJpP5KwqAkH
+```
+
+### examine-genesis-checkpoint
+
+Inspect the genesis checkpoint:
+
+```bash
+iota genesis-ceremony --path ./ceremony examine-genesis-checkpoint
+```
+
+Output:
+```
+╭─────────────────────────────────────────────────────╮
+│ Genesis Checkpoint                                        │
+├─────────────────────────────────────────────────────┤
+│ Digest       : 5KzKVq7qP2xH8FwkQJqxhPNBjkFVjM3xZoJpP5K │
+│ Epoch        : 0                                        │
+│ Validators   : 4                                        │
+│ Timestamp    : 2024-01-01T00:00:00Z                     │
+╰─────────────────────────────────────────────────────╯
+```
+
+### verify-and-sign
+
+Verify and sign the genesis checkpoint:
+
+```bash
+iota genesis-ceremony [OPTIONS] verify-and-sign \
+  --key-file <AUTHORITY_KEY_FILE>
+```
+
+#### Example
+
+<Steps>
+  <Step title="Each validator verifies and signs">
+    ```bash
+    # Validator 1
+    iota genesis-ceremony --path ./ceremony \
+      verify-and-sign \
+      --key-file ./validator-1-authority.key
+    ```
+    
+    Output:
+    ```
+    Successfully verified and signed genesis checkpoint: 5KzKVq7qP2x...
+    ```
+  </Step>
+
+  <Step title="Share ceremony directory">
+    After each validator signs, share the updated ceremony directory with all participants.
+  </Step>
+
+  <Step title="Repeat for all validators">
+    Each validator runs verify-and-sign with their authority key.
+  </Step>
+</Steps>
+
+### finalize
+
+Generate the final genesis blob:
+
+```bash
+iota genesis-ceremony --path ./ceremony finalize
+```
+
+Output:
+```
+Successfully built genesis.blob
+genesis.blob blake2b-256: 4a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b
+```
+
+This creates `./ceremony/genesis.blob` which can be distributed to all nodes.
+
+### validate-state
+
+Validate the ceremony state:
+
+```bash
+iota genesis-ceremony --path ./ceremony validate-state
+```
+
+## Complete Ceremony Example
+
+<Steps>
+  <Step title="Coordinator initializes ceremony">
+    ```bash
+    mkdir iota-genesis-ceremony
+    cd iota-genesis-ceremony
+    
+    iota genesis-ceremony init
+    ```
+  </Step>
+
+  <Step title="Each validator generates keys and joins">
+    ```bash
+    # Validator generates keys
+    iota keytool generate bls12381  # Authority key
+    iota keytool generate ed25519   # Protocol key
+    iota keytool generate ed25519   # Account key
+    iota keytool generate ed25519   # Network key
+    
+    # Validator adds themselves
+    iota genesis-ceremony add-validator \
+      --name validator-name \
+      --authority-key-file ./bls-*.key \
+      --protocol-key-file ./protocol.key \
+      --account-key-file ./account.key \
+      --network-key-file ./network.key \
+      --network-address "/dns/validator.example.com/tcp/8080/http" \
+      --p2p-address "/dns/validator.example.com/udp/8084/http" \
+      --primary-address "/dns/validator.example.com/udp/8081/http"
+    ```
+  </Step>
+
+  <Step title="Coordinator sets token distribution">
+    ```bash
+    # Create allocations CSV
+    cat > allocations.csv << EOF
+    address,amount,staked_with_validator
+    0x1234...,1000000000000000,0xabc...
+    0x5678...,500000000000000,
+    EOF
+    
+    iota genesis-ceremony init-token-distribution-schedule \
+      --token-allocations-path ./allocations.csv
+    ```
+  </Step>
+
+  <Step title="Build unsigned checkpoint">
+    ```bash
+    iota genesis-ceremony build-unsigned-checkpoint
+    ```
+  </Step>
+
+  <Step title="Each validator verifies and signs">
+    ```bash
+    # Each validator runs:
+    iota genesis-ceremony verify-and-sign \
+      --key-file ./their-authority.key
+    ```
+  </Step>
+
+  <Step title="Finalize genesis">
+    ```bash
+    # After all validators sign:
+    iota genesis-ceremony finalize
+    
+    # Distribute genesis.blob to all nodes
+    ```
+  </Step>
+</Steps>
+
+## Admin Interface
+
+Set admin interface address for genesis:
+
+```bash
+iota genesis [OPTIONS] --admin-interface-address <HOST:PORT>
+```
+
+### Example
+
+```bash
+iota genesis \
+  --force \
+  --committee-size 4 \
+  --admin-interface-address 0.0.0.0:1337
+```
+
+This enables the admin interface on all validators for network monitoring and management.
+
+## Best Practices
+
+### Key Security
+
+1. **Generate keys securely**:
+   ```bash
+   # Use secure random source
+   iota keytool generate bls12381
+   ```
+
+2. **Protect authority keys**:
+   ```bash
+   chmod 600 *.key
+   ```
+
+3. **Backup all keys** before ceremony
+
+4. **Use hardware security modules (HSMs)** for production networks
+
+### Ceremony Coordination
+
+1. **Use version control** for ceremony files:
+   ```bash
+   git init
+   git add genesis-builder-parameters.yaml
+   git commit -m "Add validator X"
+   ```
+
+2. **Verify checksums** when sharing ceremony state:
+   ```bash
+   sha256sum genesis-builder-parameters.yaml
+   ```
+
+3. **Document all parameters**:
+   - Protocol version
+   - Epoch duration
+   - Token distribution
+   - Validator details
+
+4. **Test on a private network** before mainnet
+
+### Network Parameters
+
+1. **Epoch duration**:
+   - Development: 60,000 ms (1 minute)
+   - Testnet: 3,600,000 ms (1 hour)
+   - Mainnet: 86,400,000 ms (24 hours)
+
+2. **Committee size**:
+   - Local development: 1
+   - Testnet: 4-10
+   - Mainnet: 100+
+
+3. **Gas allocation**:
+   - Ensure sufficient gas for validators
+   - Allocate extra gas accounts for testing
+
+## Troubleshooting
+
+### Genesis Creation Issues
+
+**Error**: `Cannot run genesis with non-empty config directory`
+
+Solution:
+```bash
+# Use --force to overwrite
+iota genesis --force
+
+# Or backup and remove existing config
+mv ~/.iota/iota_config ~/.iota/iota_config.backup
+iota genesis
+```
+
+**Error**: `Epoch duration can only be set with --force-regenesis`
+
+Solution:
+```bash
+# Remove existing genesis first
+rm ~/.iota/iota_config/genesis.blob
+iota genesis --force --epoch-duration-ms 86400000
+```
+
+### Ceremony Issues
+
+**Error**: `Invalid public keys index`
+
+Ensure all keys are generated correctly:
+```bash
+iota keytool show ./validator-authority.key
+```
+
+**Error**: `Serialized protocol version does not match`
+
+All validators must use the same protocol version:
+```bash
+iota genesis-ceremony --protocol-version <VERSION> <SUBCOMMAND>
+```
+
+### Validation Issues
+
+**Error**: `Failed to resolve dependencies`
+
+Ensure ceremony state is complete:
+```bash
+iota genesis-ceremony validate-state
+```
+
+**Error**: `Insufficient signatures`
+
+Verify all validators have signed:
+```bash
+iota genesis-ceremony list-validators
+# Check signature count
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Local Network" icon="network-wired" href="/cli/local-network">
+    Start a local network with genesis
+  </Card>
+  <Card title="Client Commands" icon="terminal" href="/cli/client-commands">
+    Interact with your network
+  </Card>
+</CardGroup>

@@ -1,0 +1,333 @@
+---
+title: Move programming language
+description: Introduction to Move, the safe and flexible programming language used to write smart contracts on IOTA.
+---
+
+Move is a programming language originally developed by Meta (Facebook) for the Diem blockchain. IOTA uses Move as its smart contract language, providing developers with a safe, expressive way to define digital assets and business logic.
+
+## Why Move?
+
+Move was designed with blockchain-specific requirements in mind:
+
+- **Resource safety**: Assets are modeled as resources that cannot be copied or implicitly discarded
+- **Type safety**: Strong static typing catches errors at compile time
+- **Formal verification**: The language is designed to be formally verifiable
+- **Flexibility**: Generic programming and ability to define custom types
+- **Performance**: Compiles to efficient bytecode executed by the Move VM
+
+<Note>
+Move's resource-oriented programming model makes it natural to represent digital assets like tokens, NFTs, and other valuables that should never be duplicated or accidentally destroyed.
+</Note>
+
+## Key language features
+
+### Module system
+
+Move code is organized into modules that can be published to the blockchain:
+
+```move
+module iota::object {
+    use std::bcs;
+    use iota::address;
+    
+    /// An object ID
+    public struct ID has copy, drop, store {
+        bytes: address,
+    }
+    
+    /// Globally unique ID for IOTA objects
+    public struct UID has store {
+        id: ID,
+    }
+}
+```
+
+Each module:
+- Belongs to a specific address/package
+- Can import other modules with `use` statements
+- Defines structs, functions, and constants
+- Controls visibility with `public`, `public(package)`, or private access
+
+### Abilities
+
+Move types have abilities that control what operations can be performed:
+
+- **`copy`**: Value can be copied
+- **`drop`**: Value can be dropped/discarded
+- **`store`**: Value can be stored in global storage
+- **`key`**: Value can be used as a top-level object (IOTA extension)
+
+```move
+// A coin that can be stored and dropped, but not copied
+public struct Coin<phantom T> has store, drop {
+    id: UID,
+    balance: Balance<T>,
+}
+
+// An ID that can be copied, dropped, and stored
+public struct ID has copy, drop, store {
+    bytes: address,
+}
+```
+
+<Info>
+The `key` ability is a IOTA extension to Move. Any struct with `key` must have `id: UID` as its first field, making it a top-level object in IOTA's storage.
+</Info>
+
+### Generics
+
+Move supports generic programming with type parameters:
+
+```move
+/// Generic vector operations
+public fun empty<Element>(): vector<Element>
+
+public fun length<Element>(v: &vector<Element>): u64
+
+public fun push_back<Element>(v: &mut vector<Element>, e: Element)
+
+public fun pop_back<Element>(v: &mut vector<Element>): Element
+```
+
+Generics enable writing reusable code that works with different types while maintaining type safety.
+
+### References
+
+Move uses references for safe, temporary access to values:
+
+- **Immutable references** (`&T`): Allow reading but not modifying
+- **Mutable references** (`&mut T`): Allow both reading and modifying
+
+```move
+/// Immutable reference - read only
+public fun borrow<Element>(v: &vector<Element>, i: u64): &Element
+
+/// Mutable reference - can modify
+public fun borrow_mut<Element>(v: &mut vector<Element>, i: u64): &mut Element
+```
+
+Move's borrow checker ensures:
+- No dangling references
+- Only one mutable reference OR multiple immutable references exist at a time
+- References don't outlive the values they point to
+
+## IOTA-specific extensions
+
+### Object model
+
+IOTA extends Move with an object-centric model. Objects are structs with the `key` ability:
+
+```move
+/// A IOTA object must have key ability and UID as first field
+public struct MyObject has key {
+    id: UID,
+    value: u64,
+}
+```
+
+Objects can be:
+- **Owned**: Controlled by a single address
+- **Shared**: Accessible to anyone (with consensus)
+- **Immutable**: Frozen and cannot be modified
+
+### Transaction context
+
+Every entry function receives a `&mut TxContext` parameter providing transaction metadata:
+
+```move
+public entry fun create_object(ctx: &mut TxContext) {
+    let sender = ctx.sender();
+    let uid = object::new(ctx);
+    // Use transaction context to create objects
+}
+```
+
+The transaction context provides:
+- Sender address
+- Transaction digest
+- Epoch number
+- Fresh UIDs for creating objects
+
+### Transfer operations
+
+IOTA provides built-in functions for transferring objects:
+
+```move
+use iota::transfer;
+
+// Transfer owned object to address
+transfer::transfer(obj, recipient);
+
+// Make object shared
+transfer::share_object(obj);
+
+// Make object immutable
+transfer::freeze_object(obj);
+```
+
+## Move VM and bytecode
+
+Move source code compiles to Move bytecode, which is executed by the Move VM:
+
+1. **Compilation**: `.move` source files → `.mv` bytecode modules
+2. **Verification**: Bytecode verifier checks safety properties
+3. **Publishing**: Bytecode is published to IOTA as a package object
+4. **Execution**: Move VM interprets bytecode during transaction execution
+
+<Warning>
+The bytecode verifier enforces critical safety properties. If verification fails, the module cannot be published or executed.
+</Warning>
+
+## Standard library
+
+Move includes a comprehensive standard library:
+
+### Core types
+
+- **`vector`**: Dynamic arrays
+- **`option`**: Optional values
+- **`string`**: UTF-8 strings
+- **`ascii`**: ASCII strings
+
+### Utilities
+
+- **`bcs`**: Binary Canonical Serialization
+- **`hash`**: Cryptographic hashing
+- **`address`**: Address manipulation
+
+### Example: Using vectors
+
+```move
+use std::vector;
+
+public fun example() {
+    let mut v = vector::empty<u64>();
+    vector::push_back(&mut v, 10);
+    vector::push_back(&mut v, 20);
+    
+    let len = vector::length(&v);
+    assert!(len == 2);
+    
+    let first = vector::borrow(&v, 0);
+    assert!(*first == 10);
+}
+```
+
+## Entry functions
+
+Entry functions are the entry points callable from transactions:
+
+```move
+/// Entry function - can be called from transactions
+public entry fun create_and_transfer(
+    value: u64,
+    recipient: address,
+    ctx: &mut TxContext
+) {
+    let obj = MyObject {
+        id: object::new(ctx),
+        value,
+    };
+    transfer::transfer(obj, recipient);
+}
+```
+
+Requirements for entry functions:
+- Marked with `entry` keyword
+- Parameters must be primitive types, objects, or vectors
+- Last parameter must be `&mut TxContext`
+- Cannot return values
+
+## Programmable transaction blocks
+
+Unlike other blockchains, IOTA allows calling multiple Move functions in a single transaction:
+
+```rust
+// Pseudocode: chain multiple operations
+let coin1 = move_call("0x2::coin::split", coin, amount);
+let coin2 = move_call("0x2::coin::split", coin, amount);
+move_call("0x2::pay::send", coin1, recipient1);
+move_call("0x2::pay::send", coin2, recipient2);
+```
+
+This enables:
+- Complex multi-step operations atomically
+- Reduced transaction costs
+- Better composability between protocols
+
+<Note>
+Programmable transaction blocks are a powerful feature that enables DeFi and other complex applications to execute multiple operations with guaranteed atomicity.
+</Note>
+
+## Gas costs and metering
+
+The Move VM meters execution to prevent infinite loops and ensure fair resource usage:
+
+- **Instruction costs**: Each bytecode instruction has a gas cost
+- **Storage costs**: Reading and writing objects incurs storage gas
+- **Type operations**: Instantiating generics has associated costs
+
+Gas metering happens during execution, and transactions abort if budget is exceeded.
+
+## Best practices
+
+### Resource safety
+
+```move
+// Bad: Resource can be dropped
+public struct Coin has drop {
+    value: u64
+}
+
+// Good: Resource must be explicitly handled
+public struct Coin has store {
+    value: u64
+}
+// Now coin must be transferred, destroyed, or stored
+```
+
+### Error handling
+
+```move
+const EInvalidAmount: u64 = 0;
+const EInsufficientBalance: u64 = 1;
+
+public fun withdraw(account: &mut Account, amount: u64) {
+    assert!(amount > 0, EInvalidAmount);
+    assert!(account.balance >= amount, EInsufficientBalance);
+    account.balance = account.balance - amount;
+}
+```
+
+### Minimize storage
+
+```move
+// Expensive: stores full vector
+public struct Registry has key {
+    id: UID,
+    all_items: vector<Item>,
+}
+
+// Better: use dynamic fields for unbounded collections
+public struct Registry has key {
+    id: UID,
+    // Items stored as dynamic fields
+}
+```
+
+## Related topics
+
+<CardGroup cols={2}>
+  <Card title="Objects and ownership" icon="box" href="/concepts/objects-and-ownership">
+    Learn about IOTA's object model and ownership types
+  </Card>
+  <Card title="Transactions" icon="exchange-alt" href="/concepts/transactions">
+    Understand how to construct and execute transactions
+  </Card>
+  <Card title="Gas and fees" icon="gas-pump" href="/concepts/gas-and-fees">
+    Learn about gas computation and fee structure
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/concepts/architecture">
+    Overview of IOTA's system architecture
+  </Card>
+</CardGroup>

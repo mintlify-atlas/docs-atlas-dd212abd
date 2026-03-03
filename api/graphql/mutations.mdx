@@ -1,0 +1,431 @@
+---
+title: GraphQL Mutations
+description: GraphQL mutation operations for executing transactions
+---
+
+GraphQL mutations enable write operations on the IOTA blockchain. The `Mutation` type provides methods for executing transactions and dry-running them.
+
+## executeTransactionBlock
+
+Execute a transaction block and return the results.
+
+<ParamField path="txBytes" type="String" required>
+  BCS-encoded transaction data as a Base64 string
+</ParamField>
+
+<ParamField path="signatures" type="[String!]" required>
+  List of signatures as Base64 strings. Each signature includes the flag, signature bytes, and public key.
+</ParamField>
+
+### Request Format
+
+```graphql
+mutation {
+  executeTransactionBlock(
+    txBytes: "AAACACCNu5i3R...truncated..."
+    signatures: ["ANjGTW36LqS...truncated..."]
+  ) {
+    effects {
+      status
+      errors
+      timestamp
+      gasEffects {
+        gasSummary {
+          computationCost
+          storageCost
+          storageRebate
+          nonRefundableStorageFee
+        }
+      }
+    }
+    digest
+    bcs
+  }
+}
+```
+
+### Response Fields
+
+<ResponseField name="digest" type="String">
+  The transaction digest (Base58-encoded)
+</ResponseField>
+
+<ResponseField name="effects" type="TransactionBlockEffects">
+  The effects of executing the transaction
+  
+  <Expandable title="TransactionBlockEffects">
+    <ResponseField name="status" type="ExecutionStatus">
+      Execution status (SUCCESS or FAILURE)
+    </ResponseField>
+    <ResponseField name="errors" type="String">
+      Error message if execution failed
+    </ResponseField>
+    <ResponseField name="timestamp" type="DateTime">
+      Timestamp of the transaction
+    </ResponseField>
+    <ResponseField name="gasEffects" type="GasEffects">
+      Gas cost breakdown
+      
+      <Expandable title="GasEffects">
+        <ResponseField name="gasObject" type="Object">
+          The gas coin object used
+        </ResponseField>
+        <ResponseField name="gasSummary" type="GasCostSummary">
+          Detailed gas cost breakdown
+          
+          <Expandable title="GasCostSummary">
+            <ResponseField name="computationCost" type="BigInt">
+              Gas spent on computation
+            </ResponseField>
+            <ResponseField name="storageCost" type="BigInt">
+              Gas spent on storage
+            </ResponseField>
+            <ResponseField name="storageRebate" type="BigInt">
+              Gas rebated from storage
+            </ResponseField>
+            <ResponseField name="nonRefundableStorageFee" type="BigInt">
+              Non-refundable storage fee
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="balanceChanges" type="[BalanceChange!]">
+      Balance changes for all affected addresses
+    </ResponseField>
+    <ResponseField name="objectChanges" type="[ObjectChange!]">
+      Changes to objects (created, mutated, deleted, etc.)
+    </ResponseField>
+    <ResponseField name="dependencies" type="[TransactionBlock!]">
+      Transactions this transaction depends on
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="bcs" type="Base64">
+  BCS-encoded transaction block data
+</ResponseField>
+
+### Example with Full Details
+
+```graphql
+mutation ExecuteTransaction($txBytes: String!, $signatures: [String!]!) {
+  executeTransactionBlock(txBytes: $txBytes, signatures: $signatures) {
+    digest
+    effects {
+      status
+      errors
+      timestamp
+      epoch {
+        epochId
+      }
+      checkpoint {
+        sequenceNumber
+      }
+      balanceChanges {
+        owner {
+          ... on AddressOwner {
+            owner { address }
+          }
+        }
+        amount
+        coinType { repr }
+      }
+      objectChanges {
+        idCreated
+        idDeleted
+      }
+      gasEffects {
+        gasSummary {
+          computationCost
+          storageCost
+          storageRebate
+          nonRefundableStorageFee
+        }
+      }
+    }
+  }
+}
+```
+
+Variables:
+
+```json
+{
+  "txBytes": "AAACACCNu5i3R...",
+  "signatures": ["ANjGTW36LqS..."]
+}
+```
+
+### Error Handling
+
+If the transaction fails, the response includes error information:
+
+```graphql
+{
+  "data": {
+    "executeTransactionBlock": {
+      "digest": "...",
+      "effects": {
+        "status": "FAILURE",
+        "errors": "InsufficientGas"
+      }
+    }
+  }
+}
+```
+
+Common execution errors:
+
+- `InsufficientGas` - Not enough gas to execute the transaction
+- `InsufficientCoinBalance` - Insufficient coin balance
+- `ObjectNotFound` - Referenced object doesn't exist
+- `InvalidObjectOwnership` - Object ownership violation
+- `MoveAbort` - Move execution aborted
+
+## Transaction Building Workflow
+
+To execute a transaction using GraphQL:
+
+### 1. Build Transaction
+
+Use the IOTA SDK to construct the transaction:
+
+```typescript
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+const tx = new Transaction();
+// Add transaction commands
+tx.moveCall({
+  target: '0x2::coin::transfer',
+  arguments: [/* ... */]
+});
+```
+
+### 2. Serialize Transaction
+
+Serialize the transaction to bytes:
+
+```typescript
+const txBytes = await tx.build({ client });
+const txBytesBase64 = Buffer.from(txBytes).toString('base64');
+```
+
+### 3. Sign Transaction
+
+Sign with your keypair:
+
+```typescript
+const signature = await keypair.signTransaction(txBytes);
+const signatureBase64 = signature.signature;
+```
+
+### 4. Execute via GraphQL
+
+```graphql
+mutation {
+  executeTransactionBlock(
+    txBytes: $txBytesBase64
+    signatures: [$signatureBase64]
+  ) {
+    digest
+    effects {
+      status
+    }
+  }
+}
+```
+
+## Dry Run Queries
+
+Before executing, you can dry-run a transaction using queries:
+
+### dryRunTransactionBlock
+
+Simulate transaction execution without committing:
+
+```graphql
+query {
+  dryRunTransactionBlock(
+    txBytes: "AAACACCNu5i3R..."
+  ) {
+    transaction {
+      digest
+      sender { address }
+    }
+    effects {
+      status
+      errors
+      gasEffects {
+        gasSummary {
+          computationCost
+          storageCost
+        }
+      }
+      balanceChanges {
+        owner {
+          ... on AddressOwner {
+            owner { address }
+          }
+        }
+        amount
+      }
+    }
+    error
+  }
+}
+```
+
+### Response Fields
+
+<ResponseField name="transaction" type="TransactionBlock">
+  The transaction block details
+</ResponseField>
+
+<ResponseField name="effects" type="TransactionBlockEffects">
+  The simulated effects
+</ResponseField>
+
+<ResponseField name="error" type="String">
+  Error message if simulation failed
+</ResponseField>
+
+## Best Practices
+
+### 1. Always Dry Run First
+
+Dry-run transactions before executing to:
+
+- Verify the transaction will succeed
+- Check gas costs
+- Preview balance and object changes
+- Catch errors early
+
+### 2. Handle Errors Gracefully
+
+Check the `status` field in effects:
+
+```graphql
+mutation {
+  executeTransactionBlock(...) {
+    effects {
+      status
+      errors
+    }
+  }
+}
+```
+
+If `status` is `FAILURE`, read the `errors` field for details.
+
+### 3. Request Only Needed Fields
+
+GraphQL allows precise field selection. Only request fields you need:
+
+```graphql
+mutation {
+  executeTransactionBlock(...) {
+    digest
+    effects {
+      status
+    }
+  }
+}
+```
+
+### 4. Monitor Gas Costs
+
+Always include gas cost information:
+
+```graphql
+mutation {
+  executeTransactionBlock(...) {
+    effects {
+      gasEffects {
+        gasSummary {
+          computationCost
+          storageCost
+          storageRebate
+        }
+      }
+    }
+  }
+}
+```
+
+### 5. Track Balance Changes
+
+Monitor balance changes to verify expected outcomes:
+
+```graphql
+mutation {
+  executeTransactionBlock(...) {
+    effects {
+      balanceChanges {
+        owner {
+          ... on AddressOwner {
+            owner { address }
+          }
+        }
+        amount
+        coinType { repr }
+      }
+    }
+  }
+}
+```
+
+## Transaction Types
+
+The GraphQL API supports all transaction types:
+
+- **Transfer** - Transfer coins or objects
+- **MoveCall** - Call Move functions
+- **Publish** - Publish Move packages
+- **SplitCoin** - Split coin objects
+- **MergeCoin** - Merge coin objects
+- **MakeMoveVec** - Create Move vectors
+- **Upgrade** - Upgrade Move packages
+
+## Gas Configuration
+
+Set gas parameters when building transactions:
+
+```typescript
+const tx = new Transaction();
+tx.setGasBudget(10000000); // 0.01 IOTA
+tx.setGasPrice(await client.getReferenceGasPrice());
+```
+
+Query reference gas price:
+
+```graphql
+{
+  epoch {
+    referenceGasPrice
+  }
+}
+```
+
+## Transaction Finality
+
+Transactions go through these stages:
+
+1. **Submitted** - Transaction sent to validators
+2. **Certified** - Quorum of validators signed the transaction
+3. **Executed** - Transaction executed and effects generated
+4. **Finalized** - Included in a checkpoint
+
+The mutation returns after the transaction is executed. Query the transaction later to confirm checkpoint inclusion:
+
+```graphql
+{
+  transactionBlock(digest: "...") {
+    effects {
+      checkpoint {
+        sequenceNumber
+      }
+    }
+  }
+}
+```

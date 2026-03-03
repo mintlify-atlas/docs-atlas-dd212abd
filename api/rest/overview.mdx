@@ -1,0 +1,318 @@
+---
+title: REST API Overview
+description: Overview of the IOTA REST API for interacting with the IOTA blockchain
+---
+
+The IOTA REST API provides a RESTful interface for interacting with the IOTA blockchain. It offers efficient binary data encoding using BCS (Binary Canonical Serialization) alongside JSON responses.
+
+## API Endpoints
+
+### Mainnet
+
+```bash
+https://api.iota.io/api/v1/
+```
+
+### Testnet
+
+```bash
+https://api.testnet.iota.io/api/v1/
+```
+
+### Local Node
+
+```bash
+http://127.0.0.1:9184/api/v1/
+```
+
+## Content Types
+
+The REST API supports multiple content types:
+
+### JSON (application/json)
+
+Human-readable JSON format:
+
+```bash
+curl -H "Accept: application/json" \
+  https://api.iota.io/api/v1/
+```
+
+### BCS (application/bcs)
+
+Binary Canonical Serialization for efficient data transfer:
+
+```bash
+curl -H "Accept: application/bcs" \
+  https://api.iota.io/api/v1/checkpoints/1000
+```
+
+## API Stability
+
+Endpoints are marked as either:
+
+- **Stable** - Production-ready with backward compatibility guarantees
+- **Unstable** - May change in future versions
+
+By default, unstable APIs are enabled during development. Check the node configuration for production deployments.
+
+## Request Format
+
+All REST requests use standard HTTP methods:
+
+- **GET** - Retrieve resources
+- **POST** - Submit transactions (write operations)
+
+### Path Parameters
+
+Resources are identified by path parameters:
+
+```bash
+GET /api/v1/checkpoints/{checkpoint}
+GET /api/v1/transactions/{transaction}
+GET /api/v1/objects/{object_id}
+```
+
+### Query Parameters
+
+Filtering and pagination use query parameters:
+
+```bash
+GET /api/v1/checkpoints?limit=10&direction=ascending
+GET /api/v1/accounts/{account}/objects?limit=50&start=0x...
+```
+
+## Response Format
+
+### Success Response
+
+HTTP 200 with response body:
+
+```json
+{
+  "checkpoint": {
+    "sequenceNumber": "1000",
+    "digest": "...",
+    "timestamp": "2024-01-01T00:00:00Z"
+  },
+  "signature": "..."
+}
+```
+
+### Paginated Response
+
+Paginated endpoints include the `X-Iota-Cursor` header:
+
+```bash
+HTTP/1.1 200 OK
+X-Iota-Cursor: 1001
+Content-Type: application/json
+
+[...]
+```
+
+Use the cursor value in the next request:
+
+```bash
+GET /api/v1/checkpoints?start=1001
+```
+
+### Error Response
+
+HTTP error codes with error message:
+
+```json
+{
+  "error": "Checkpoint 999999 not found"
+}
+```
+
+## HTTP Status Codes
+
+- **200 OK** - Request succeeded
+- **400 Bad Request** - Invalid request parameters
+- **404 Not Found** - Resource not found
+- **410 Gone** - Resource has been pruned
+- **500 Internal Server Error** - Server error
+
+## Pagination
+
+List endpoints support pagination with these parameters:
+
+<ParamField path="limit" type="u32">
+  Maximum items per page (default: 50, max: 100)
+</ParamField>
+
+<ParamField path="start" type="String">
+  Starting cursor for pagination
+</ParamField>
+
+<ParamField path="direction" type="Direction">
+  Sort direction: `ascending` or `descending` (default: `descending`)
+</ParamField>
+
+## Headers
+
+Custom response headers:
+
+### X-Iota-Cursor
+
+Cursor for the next page in paginated responses.
+
+### X-Iota-Chain-Id
+
+Chain identifier for the network.
+
+### X-Iota-Software-Version
+
+Node software version.
+
+## Basic Examples
+
+### Get Node Info
+
+```bash
+curl https://api.iota.io/api/v1/
+```
+
+### Health Check
+
+```bash
+curl https://api.iota.io/api/v1/health
+```
+
+### Get Checkpoint
+
+```bash
+curl https://api.iota.io/api/v1/checkpoints/1000
+```
+
+### Get Transaction
+
+```bash
+curl https://api.iota.io/api/v1/transactions/Dv5XRBjWvZTwiHVrhUetvDTgxyM8xVMb6P8pCAZv51tq
+```
+
+### Get Object
+
+```bash
+curl https://api.iota.io/api/v1/objects/0x5
+```
+
+## API Categories
+
+<CardGroup cols={2}>
+  <Card title="Endpoints" icon="plug" href="/api/rest/endpoints">
+    Complete list of REST API endpoints
+  </Card>
+  
+  <Card title="OpenAPI Spec" icon="file-code" href="https://api.iota.io/api/v1/openapi.json">
+    Download the OpenAPI 3.1 specification
+  </Card>
+</CardGroup>
+
+## OpenAPI Documentation
+
+The REST API provides a complete OpenAPI 3.1 specification at:
+
+```bash
+https://api.iota.io/api/v1/openapi.json
+```
+
+Use this with tools like:
+
+- **Swagger UI** - Interactive API explorer
+- **Postman** - Import and test endpoints
+- **OpenAPI Generator** - Generate client SDKs
+
+## SDK Support
+
+For easier integration, use the official IOTA SDKs which include REST client support:
+
+- [TypeScript SDK](/sdk/typescript)
+- [Rust SDK](/sdk/rust)
+
+## BCS Encoding
+
+Binary Canonical Serialization (BCS) provides:
+
+- **Compact** - Smaller payload sizes
+- **Efficient** - Faster serialization/deserialization
+- **Type-safe** - Strongly typed binary format
+
+To use BCS:
+
+```bash
+curl -H "Accept: application/bcs" \
+  https://api.iota.io/api/v1/checkpoints/1000 \
+  --output checkpoint.bcs
+```
+
+Decode using the IOTA SDK:
+
+```typescript
+import { bcs } from '@iota/iota-sdk/bcs';
+
+const checkpoint = bcs.Checkpoint.parse(data);
+```
+
+## Rate Limits
+
+Public nodes may enforce rate limits. For production applications:
+
+- Run your own full node
+- Implement request caching
+- Use appropriate pagination limits
+- Handle 429 (Too Many Requests) responses
+
+## Performance Tips
+
+### 1. Use BCS for Large Datasets
+
+BCS encoding is more efficient for:
+
+- Full checkpoints
+- Large transaction lists
+- Bulk object queries
+
+### 2. Request Only What You Need
+
+Use appropriate page limits:
+
+```bash
+# Good: Reasonable page size
+GET /api/v1/transactions?limit=20
+
+# Bad: Unnecessarily large page
+GET /api/v1/transactions?limit=100
+```
+
+### 3. Cache Responses
+
+Cache immutable data:
+
+- Finalized checkpoints
+- Confirmed transactions
+- Historical data
+
+### 4. Use Conditional Requests
+
+Implement ETag-based caching where supported.
+
+## Error Handling
+
+Handle common error scenarios:
+
+```bash
+# Resource not found
+curl -i https://api.iota.io/api/v1/checkpoints/999999999
+# Returns: 404 Not Found
+
+# Resource pruned
+curl -i https://api.iota.io/api/v1/checkpoints/1
+# Returns: 410 Gone (if pruned)
+
+# Invalid parameters
+curl -i https://api.iota.io/api/v1/checkpoints?limit=1000
+# Returns: 400 Bad Request
+```

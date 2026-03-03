@@ -1,0 +1,196 @@
+---
+title: System architecture
+description: Overview of IOTA's blockchain architecture, core components, and how they interact to provide a high-performance distributed ledger.
+---
+
+The IOTA blockchain is built on a sophisticated multi-layered architecture that combines object-centric storage, Move smart contracts, and DAG-based consensus to deliver high throughput and low latency.
+
+## Core architectural layers
+
+IOTA's architecture consists of several interconnected layers that work together to process transactions and maintain network state:
+
+### Execution layer
+
+The execution layer processes transactions and maintains the state of all objects on the network. Key components include:
+
+- **Transaction executor**: Processes programmable transactions and executes Move bytecode
+- **Move VM**: Executes Move smart contracts with built-in safety guarantees
+- **Object runtime**: Manages the lifecycle of objects including creation, mutation, and deletion
+- **Gas metering**: Tracks computation and storage costs during execution
+
+### Storage layer
+
+IOTA uses an object-centric storage model where data is organized around objects rather than accounts:
+
+- **Object store**: Stores all objects with their metadata (version, digest, owner)
+- **Package store**: Manages Move package bytecode and dependencies
+- **Transaction store**: Maintains transaction history and effects
+- **Checkpoint store**: Persists consensus checkpoints for recovery and synchronization
+
+<Note>
+IOTA stores objects as versioned entries with Lamport timestamps, enabling parallel transaction processing when objects don't conflict.
+</Note>
+
+### Consensus layer
+
+IOTA implements a DAG-based consensus protocol that provides high throughput:
+
+- **Block DAG**: Validators produce blocks that reference previous blocks, forming a directed acyclic graph
+- **Universal committer**: Makes commit decisions for leader blocks in the DAG
+- **Leader schedule**: Determines which validator acts as leader for each round
+- **Commit observer**: Processes committed sub-DAGs and produces finalized output
+
+## Key components
+
+### Authority node
+
+Validator nodes (authorities) are responsible for:
+
+- Proposing blocks containing transactions
+- Validating and signing blocks from other authorities
+- Participating in consensus by building the block DAG
+- Executing committed transactions and updating state
+- Serving queries from clients and other validators
+
+### Block manager
+
+The block manager (`BlockManager`) tracks DAG dependencies when processing new blocks:
+
+- Accepts blocks when their causal history is complete
+- Suspends blocks waiting for missing ancestors
+- Maintains the DAG state including blocks, commits, and committed rounds
+- Coordinates with the synchronizer to fetch missing blocks
+
+### Transaction consumer
+
+The transaction consumer pulls pending transactions from the mempool to include in the next block proposal. It ensures:
+
+- Transaction validity before inclusion
+- Gas budget availability for execution
+- Object dependencies are resolvable
+- Compliance with protocol limits (max transactions per block)
+
+## Data flow
+
+Here's how a transaction flows through the system:
+
+<Steps>
+  <Step title="Transaction submission">
+    Client creates and signs a transaction, then submits it to a validator node.
+  </Step>
+  
+  <Step title="Block proposal">
+    Validator includes the transaction in a block proposal and broadcasts it to the network.
+  </Step>
+  
+  <Step title="Block validation">
+    Other validators verify the block's validity and add it to their local DAG.
+  </Step>
+  
+  <Step title="Consensus">
+    The universal committer identifies committed leaders and their sub-DAGs based on stake-weighted voting.
+  </Step>
+  
+  <Step title="Execution">
+    Committed transactions are executed in deterministic order, updating object state.
+  </Step>
+  
+  <Step title="Effects and events">
+    Transaction effects (object changes) and events are produced and stored.
+  </Step>
+  
+  <Step title="Checkpoint">
+    Periodically, validators create checkpoints to finalize a batch of transactions.
+  </Step>
+</Steps>
+
+## Object versioning
+
+IOTA uses Lamport timestamps for object versioning, which enables optimistic concurrency:
+
+```rust
+pub struct MoveObject {
+    // The type of this object (immutable)
+    type_: MoveObjectType,
+    // Lamport timestamp version
+    version: SequenceNumber,
+    // BCS-encoded Move struct value
+    contents: Vec<u8>,
+}
+```
+
+Each transaction increments affected objects' versions to the transaction's Lamport version. This allows:
+
+- Multiple transactions to execute in parallel if they touch different objects
+- Deterministic conflict resolution when transactions access the same objects
+- Efficient caching and synchronization across validators
+
+<Warning>
+Object versions are NOT sequentially increasing integers. They are Lamport timestamps that increase each time an object is used as a mutable input.
+</Warning>
+
+## Programmable transactions
+
+IOTA supports programmable transactions that chain multiple operations together atomically:
+
+- **Pure arguments**: Serialized data inputs (e.g., amounts, addresses)
+- **Object arguments**: References to on-chain objects (owned, shared, or immutable)
+- **Commands**: Move calls, transfers, object operations
+- **Results chaining**: Output from one command can be input to another
+
+```rust
+pub struct ProgrammableTransaction {
+    // All inputs to the transaction
+    inputs: Vec<CallArg>,
+    // Commands to execute in sequence
+    commands: Vec<Command>,
+}
+```
+
+This architecture enables complex transaction logic without multiple round trips to the blockchain.
+
+## Transaction effects
+
+After execution, IOTA produces transaction effects that describe all state changes:
+
+- **Modified objects**: Objects that were mutated with their new versions
+- **Created objects**: Newly created objects with their initial state
+- **Deleted objects**: Objects that were deleted or wrapped
+- **Events**: Custom events emitted by Move code
+- **Gas summary**: Breakdown of computation and storage costs
+- **Status**: Success or failure with error details
+
+Effects are hashed and signed by validators, providing cryptographic proof of execution results.
+
+## Epochs and protocol upgrades
+
+IOTA operates in epochs, which are fixed periods of time (typically 24 hours):
+
+- Validator set is fixed within an epoch
+- Stake distribution is locked for the epoch
+- Protocol version is consistent across an epoch
+- Epoch boundaries enable protocol upgrades without hard forks
+
+At epoch boundaries:
+
+1. New validator set becomes active
+2. Protocol version can be upgraded if coordinated
+3. Storage fees are reconciled
+4. Randomness beacon is rotated
+
+## Related topics
+
+<CardGroup cols={2}>
+  <Card title="Move language" icon="code" href="/concepts/move-language">
+    Learn about the Move programming language used for smart contracts
+  </Card>
+  <Card title="Objects and ownership" icon="box" href="/concepts/objects-and-ownership">
+    Understand IOTA's object model and ownership types
+  </Card>
+  <Card title="Consensus" icon="network-wired" href="/concepts/consensus">
+    Deep dive into IOTA's DAG-based consensus mechanism
+  </Card>
+  <Card title="Transactions" icon="exchange-alt" href="/concepts/transactions">
+    Learn about transaction structure and lifecycle
+  </Card>
+</CardGroup>

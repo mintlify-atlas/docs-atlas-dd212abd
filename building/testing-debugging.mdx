@@ -1,0 +1,451 @@
+---
+title: Testing and debugging Move code
+description: Learn how to write comprehensive tests, debug issues, and ensure your Move smart contracts work correctly on IOTA.
+---
+
+Testing is crucial for ensuring your Move smart contracts work correctly and securely. IOTA provides powerful testing utilities to simulate blockchain interactions.
+
+## Test structure
+
+Move tests are written in the same file as your module or in separate test modules:
+
+```move
+module my_package::counter {
+    // Module code here...
+}
+
+#[test_only]
+module my_package::counter_test {
+    use my_package::counter;
+    use iota::test_scenario as ts;
+    use iota::test_utils;
+
+    #[test]
+    fun test_counter() {
+        // Test code here
+    }
+}
+```
+
+## Using test scenario
+
+The `test_scenario` module simulates multi-transaction scenarios:
+
+```move
+use iota::test_scenario as ts;
+
+#[test]
+fun test_multi_transaction() {
+    let user1 = @0xA;
+    let user2 = @0xB;
+
+    // Begin test scenario with user1
+    let mut ts = ts::begin(user1);
+
+    // Transaction 1: user1 creates an object
+    {
+        ts.next_tx(user1);
+        let obj = MyObject {
+            id: object::new(ts.ctx()),
+            value: 100,
+        };
+        transfer::transfer(obj, user1);
+    };
+
+    // Transaction 2: user1 modifies the object
+    {
+        ts.next_tx(user1);
+        let mut obj = ts.take_from_sender<MyObject>();
+        obj.value = 200;
+        ts::return_to_sender(&ts, obj);
+    };
+
+    // Transaction 3: user2 cannot access user1's object
+    {
+        ts.next_tx(user2);
+        // This would fail: let obj = ts.take_from_sender<MyObject>();
+    };
+
+    ts.end();
+}
+```
+
+## Test scenario API
+
+### Transaction management
+
+```move
+// Start a new transaction
+ts.next_tx(user);
+
+// Get transaction effects
+let effects = ts.next_tx(user);
+assert!(ts::created(&effects).length() > 0, 0);
+
+// Advance to later epoch
+ts::later_epoch(&mut ts, 1000, user);
+```
+
+### Object operations
+
+<CodeGroup>
+```move Owned objects
+// Take object owned by sender
+let obj = ts.take_from_sender<MyObject>();
+
+// Take object from specific address
+let obj = ts.take_from_address<MyObject>(&ts, address);
+
+// Return object to sender
+ts::return_to_sender(&ts, obj);
+
+// Return object to specific address
+ts::return_to_address(address, obj);
+
+// Get most recent object ID
+let id = ts::most_recent_id_for_sender<MyObject>(&ts);
+```
+
+```move Shared objects
+// Take shared object
+let obj = ts.take_shared<SharedObject>();
+
+// Return shared object
+ts::return_shared(obj);
+```
+
+```move Immutable objects
+// Take immutable object
+let obj = ts.take_immutable<ImmutableObject>(&ts);
+
+// Return immutable object
+ts::return_immutable(obj);
+```
+</CodeGroup>
+
+## Testing patterns
+
+### Test owned objects
+
+```move
+#[test]
+fun test_owned_objects() {
+    let owner = @0xC0FFEE;
+    let mut ts = ts::begin(owner);
+
+    // Create and transfer object
+    {
+        let sword = Sword {
+            id: object::new(ts.ctx()),
+            magic: 42,
+            strength: 7,
+        };
+        transfer::transfer(sword, owner);
+    };
+
+    // Access and verify object
+    ts.next_tx(owner);
+    {
+        let sword = ts.take_from_sender<Sword>();
+        assert!(sword.magic == 42, 0);
+        assert!(sword.strength == 7, 1);
+        ts::return_to_sender(&ts, sword);
+    };
+
+    ts.end();
+}
+```
+
+### Test shared objects
+
+```move
+#[test]
+fun test_shared_objects() {
+    let user1 = @0xA;
+    let user2 = @0xB;
+    let mut ts = ts::begin(user1);
+
+    // Create shared object
+    {
+        let counter = Counter {
+            id: object::new(ts.ctx()),
+            value: 0,
+        };
+        transfer::share_object(counter);
+    };
+
+    // User1 increments
+    ts.next_tx(user1);
+    {
+        let mut counter = ts.take_shared<Counter>();
+        counter.value = counter.value + 1;
+        ts::return_shared(counter);
+    };
+
+    // User2 increments
+    ts.next_tx(user2);
+    {
+        let mut counter = ts.take_shared<Counter>();
+        counter.value = counter.value + 1;
+        assert!(counter.value == 2, 0);
+        ts::return_shared(counter);
+    };
+
+    ts.end();
+}
+```
+
+### Test immutable objects
+
+```move
+#[test]
+fun test_immutable_objects() {
+    let admin = @0xAD;
+    let user = @0xA;
+    let mut ts = ts::begin(admin);
+
+    // Create and freeze object
+    {
+        let config = Config {
+            id: object::new(ts.ctx()),
+            value: 100,
+        };
+        transfer::freeze_object(config);
+    };
+
+    // Any user can read immutable object
+    ts.next_tx(user);
+    {
+        let config = ts.take_immutable<Config>(&ts);
+        assert!(config.value == 100, 0);
+        ts::return_immutable(config);
+    };
+
+    ts.end();
+}
+```
+
+## Test utilities
+
+The `test_utils` module provides helpful testing functions:
+
+```move
+use iota::test_utils;
+
+#[test]
+fun test_utilities() {
+    // Assert equality
+    test_utils::assert_eq(10, 10);
+
+    // Test vector equality (order-independent)
+    let v1 = vector[1, 2, 3];
+    let v2 = vector[3, 2, 1];
+    test_utils::assert_same_elems(v1, v2);
+
+    // Destroy objects in tests
+    let sword = Sword {
+        id: object::new(&mut tx_context::dummy()),
+        magic: 42,
+        strength: 7,
+    };
+    test_utils::destroy(sword);
+}
+```
+
+## Running tests
+
+<Steps>
+  <Step title="Run all tests">
+    ```bash
+    iota move test
+    ```
+  </Step>
+
+  <Step title="Run specific test">
+    ```bash
+    iota move test test_sword_creation
+    ```
+  </Step>
+
+  <Step title="Run with coverage">
+    ```bash
+    iota move test --coverage
+    ```
+  </Step>
+
+  <Step title="Run with gas profiling">
+    ```bash
+    iota move test --gas-limit 1000000
+    ```
+  </Step>
+</Steps>
+
+## Expected failures
+
+Test functions that should abort:
+
+```move
+#[test]
+#[expected_failure(abort_code = 0)]
+fun test_unauthorized_access() {
+    let owner = @0xA;
+    let attacker = @0xB;
+    let mut ts = ts::begin(owner);
+
+    // Create object owned by owner
+    {
+        let obj = MyObject {
+            id: object::new(ts.ctx()),
+            owner,
+        };
+        transfer::transfer(obj, owner);
+    };
+
+    // Attacker tries to modify - should fail
+    ts.next_tx(attacker);
+    {
+        let mut obj = ts.take_from_sender<MyObject>();
+        // This should abort with code 0
+        assert!(obj.owner == attacker, 0);
+        ts::return_to_sender(&ts, obj);
+    };
+
+    ts.end();
+}
+```
+
+## Debugging techniques
+
+### Use debug print (test-only)
+
+```move
+#[test_only]
+use std::debug;
+
+#[test]
+fun test_with_debug() {
+    let value = 42;
+    debug::print(&value);
+
+    let vec = vector[1, 2, 3];
+    debug::print(&vec);
+}
+```
+
+### Add descriptive assertions
+
+```move
+// Bad: unclear error
+assert!(value == 42, 0);
+
+// Good: use different error codes for different checks
+assert!(value > 0, ERR_VALUE_TOO_SMALL);
+assert!(value < 100, ERR_VALUE_TOO_LARGE);
+assert!(value == 42, ERR_VALUE_MISMATCH);
+```
+
+### Test incrementally
+
+Break complex tests into smaller pieces:
+
+```move
+#[test]
+fun test_step_1_initialization() {
+    // Test just initialization
+}
+
+#[test]
+fun test_step_2_first_operation() {
+    // Test first operation
+}
+
+#[test]
+fun test_step_3_full_workflow() {
+    // Test complete workflow
+}
+```
+
+## Common test patterns
+
+### Test module initialization
+
+```move
+#[test]
+fun test_module_init() {
+    let admin = @0xAD;
+    let mut ts = ts::begin(admin);
+
+    // Initialize module
+    {
+        init(ts.ctx());
+    };
+
+    // Verify initialization
+    ts.next_tx(admin);
+    {
+        let forge = ts.take_from_sender<Forge>();
+        assert!(forge.swords_created == 0, 0);
+        ts::return_to_sender(&ts, forge);
+    };
+
+    ts.end();
+}
+```
+
+### Test object transfers
+
+```move
+#[test]
+fun test_transfer() {
+    let alice = @0xA;
+    let bob = @0xB;
+    let mut ts = ts::begin(alice);
+
+    // Alice creates object
+    {
+        let obj = MyObject {
+            id: object::new(ts.ctx()),
+            value: 100,
+        };
+        transfer::transfer(obj, alice);
+    };
+
+    // Alice transfers to Bob
+    ts.next_tx(alice);
+    {
+        let obj = ts.take_from_sender<MyObject>();
+        transfer::transfer(obj, bob);
+    };
+
+    // Bob receives object
+    ts.next_tx(bob);
+    {
+        let obj = ts.take_from_sender<MyObject>();
+        assert!(obj.value == 100, 0);
+        ts::return_to_sender(&ts, obj);
+    };
+
+    ts.end();
+}
+```
+
+## Best practices
+
+1. **Test all code paths**: Cover success and failure cases
+2. **Use meaningful test names**: Describe what is being tested
+3. **Keep tests focused**: One concept per test
+4. **Use constants for addresses**: Makes tests more readable
+5. **Clean up resources**: Always call `ts.end()`
+6. **Test edge cases**: Zero values, maximum values, empty vectors
+7. **Test permissions**: Verify authorization checks work
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="IOTA Move framework" icon="book" href="/building/move-framework">
+    Learn about built-in IOTA framework modules
+  </Card>
+  <Card title="Best practices" icon="star" href="/building/best-practices">
+    Follow Move development best practices
+  </Card>
+</CardGroup>

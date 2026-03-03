@@ -1,0 +1,456 @@
+---
+title: Building and Executing Transactions
+description: Learn how to build, sign, and execute transactions using the IOTA TypeScript SDK
+---
+
+The `Transaction` class is the foundation for building and executing transactions on the IOTA network. This guide covers transaction creation, common operations, and execution.
+
+## Creating a Transaction
+
+```typescript
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+const tx = new Transaction();
+```
+
+## Transfer Objects
+
+Transfer owned objects to another address:
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+const keypair = new Ed25519Keypair();
+const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+
+const tx = new Transaction();
+
+// Transfer objects to a recipient
+tx.transferObjects(
+  ['0xe19739da1a701eadc21683c5b127e62b553e833e8a15a4f292f4f48b4afea3f2'],
+  '0x1d20dcdb2bca4f508ea9613994683eb4e76e9c4ed371169677c1be02aaf0b12a',
+);
+
+const result = await client.signAndExecuteTransaction({
+  signer: keypair,
+  transaction: tx,
+});
+
+console.log({ result });
+```
+
+## Transfer IOTA
+
+Split coins and transfer a specific amount:
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+const keypair = new Ed25519Keypair();
+const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+
+const tx = new Transaction();
+
+// Split 1000 NANOS from gas coin
+const [coin] = tx.splitCoins(tx.gas, [1000]);
+
+// Transfer the split coin to recipient
+tx.transferObjects([coin], keypair.getPublicKey().toIotaAddress());
+
+const result = await client.signAndExecuteTransaction({
+  signer: keypair,
+  transaction: tx,
+});
+
+console.log({ result });
+```
+
+## Merge Coins
+
+Combine multiple coin objects into one:
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+const keypair = new Ed25519Keypair();
+const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+
+const tx = new Transaction();
+
+// Merge coins into the first coin
+tx.mergeCoins(
+  '0xe19739da1a701eadc21683c5b127e62b553e833e8a15a4f292f4f48b4afea3f2',
+  ['0x127a8975134a4824d9288722c4ee4fc824cd22502ab4ad9f6617f3ba19229c1b'],
+);
+
+const result = await client.signAndExecuteTransaction({
+  signer: keypair,
+  transaction: tx,
+});
+
+console.log({ result });
+```
+
+## Move Call
+
+Call a Move function on-chain:
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+const keypair = new Ed25519Keypair();
+const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+
+const packageObjectId = '0x...';
+const tx = new Transaction();
+
+// Call a Move function
+tx.moveCall({
+  target: `${packageObjectId}::nft::mint`,
+  arguments: [tx.pure.string('Example NFT')],
+});
+
+const result = await client.signAndExecuteTransaction({
+  signer: keypair,
+  transaction: tx,
+});
+
+console.log({ result });
+```
+
+## Publish a Package
+
+Publish a Move package to the blockchain:
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+import { execSync } from 'child_process';
+
+const keypair = new Ed25519Keypair();
+const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+
+const cliPath = 'iota'; // Path to iota CLI
+const packagePath = './my_move_package';
+
+// Build the Move package and get bytecode
+const { modules, dependencies } = JSON.parse(
+  execSync(
+    `${cliPath} move build --dump-bytecode-as-base64 --path ${packagePath}`,
+    { encoding: 'utf-8' },
+  ),
+);
+
+const tx = new Transaction();
+
+// Publish the package
+const [upgradeCap] = tx.publish({
+  modules,
+  dependencies,
+});
+
+// Transfer the upgrade capability to the sender
+tx.transferObjects([upgradeCap], keypair.getPublicKey().toIotaAddress());
+
+const result = await client.signAndExecuteTransaction({
+  signer: keypair,
+  transaction: tx,
+});
+
+console.log({ result });
+```
+
+## Transaction Building Patterns
+
+### Chaining Multiple Commands
+
+```typescript
+const tx = new Transaction();
+
+// Split coins
+const [coin1, coin2] = tx.splitCoins(tx.gas, [1000, 2000]);
+
+// Transfer coins to different recipients
+tx.transferObjects([coin1], recipient1Address);
+tx.transferObjects([coin2], recipient2Address);
+
+// Execute the transaction
+const result = await client.signAndExecuteTransaction({
+  signer: keypair,
+  transaction: tx,
+});
+```
+
+### Using Transaction Results
+
+```typescript
+const tx = new Transaction();
+
+// Call a Move function that returns an object
+const [nft] = tx.moveCall({
+  target: `${packageId}::nft::mint`,
+  arguments: [tx.pure.string('My NFT')],
+});
+
+// Use the returned object in another command
+tx.transferObjects([nft], recipientAddress);
+
+const result = await client.signAndExecuteTransaction({
+  signer: keypair,
+  transaction: tx,
+});
+```
+
+## Pure Arguments
+
+Pass primitive values to Move functions:
+
+```typescript
+const tx = new Transaction();
+
+tx.moveCall({
+  target: `${packageId}::module::function`,
+  arguments: [
+    tx.pure.string('Hello'),           // String argument
+    tx.pure.u64(1000),                 // u64 number
+    tx.pure.bool(true),                // Boolean
+    tx.pure.address(someAddress),      // Address
+  ],
+});
+```
+
+## Transaction Options
+
+### Set Gas Budget
+
+```typescript
+const tx = new Transaction();
+
+// Set gas budget (in NANOS)
+tx.setGasBudget(10000000);
+
+tx.transferObjects([objectId], recipientAddress);
+```
+
+### Set Gas Price
+
+```typescript
+const tx = new Transaction();
+
+// Set gas price
+tx.setGasPrice(1000);
+
+tx.transferObjects([objectId], recipientAddress);
+```
+
+### Set Gas Payment
+
+```typescript
+const tx = new Transaction();
+
+// Use specific coins for gas payment
+tx.setGasPayment([
+  {
+    objectId: '0x...',
+    version: 1,
+    digest: 'digest...',
+  },
+]);
+
+tx.transferObjects([objectId], recipientAddress);
+```
+
+## Executing Transactions
+
+### Sign and Execute
+
+```typescript
+const result = await client.signAndExecuteTransaction({
+  signer: keypair,
+  transaction: tx,
+});
+
+console.log('Digest:', result.digest);
+```
+
+### Execute with Options
+
+```typescript
+const result = await client.signAndExecuteTransaction({
+  signer: keypair,
+  transaction: tx,
+  options: {
+    showEffects: true,
+    showEvents: true,
+    showObjectChanges: true,
+    showBalanceChanges: true,
+  },
+});
+
+console.log('Effects:', result.effects);
+console.log('Events:', result.events);
+console.log('Object Changes:', result.objectChanges);
+```
+
+## Dry Run (Simulation)
+
+Simulate a transaction without executing it:
+
+```typescript
+import { getFullnodeUrl, IotaClient } from '@iota/iota-sdk/client';
+import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
+import { Transaction } from '@iota/iota-sdk/transactions';
+
+const keypair = new Ed25519Keypair();
+const client = new IotaClient({ url: getFullnodeUrl('testnet') });
+
+const tx = new Transaction();
+tx.transferObjects([objectId], recipientAddress);
+
+// Build the transaction
+const bytes = await tx.build({ client });
+
+// Dry run the transaction
+const dryRunResult = await client.dryRunTransactionBlock({
+  transactionBlock: bytes,
+});
+
+console.log('Dry run effects:', dryRunResult.effects);
+```
+
+## Dev Inspect
+
+Inspect transaction execution without committing:
+
+```typescript
+const tx = new Transaction();
+tx.moveCall({
+  target: `${packageId}::module::function`,
+  arguments: [tx.pure.u64(100)],
+});
+
+const inspectResult = await client.devInspectTransactionBlock({
+  sender: address,
+  transactionBlock: tx,
+});
+
+console.log('Inspect result:', inspectResult);
+```
+
+## Serialization
+
+### Build Transaction Bytes
+
+```typescript
+const tx = new Transaction();
+tx.transferObjects([objectId], recipientAddress);
+
+// Build to bytes
+const bytes = await tx.build({ client });
+
+console.log('Transaction bytes:', bytes);
+```
+
+### From/To Kind
+
+```typescript
+// Build transaction kind (without gas data)
+const txKindBytes = await tx.build({ 
+  client,
+  onlyTransactionKind: true,
+});
+
+// Reconstruct from kind
+const rebuiltTx = Transaction.fromKind(txKindBytes);
+```
+
+## Error Handling
+
+```typescript
+try {
+  const result = await client.signAndExecuteTransaction({
+    signer: keypair,
+    transaction: tx,
+  });
+  
+  // Check if transaction was successful
+  if (result.effects?.status?.status === 'success') {
+    console.log('Transaction succeeded');
+  } else {
+    console.error('Transaction failed:', result.effects?.status);
+  }
+} catch (error) {
+  console.error('Error executing transaction:', error);
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Set Appropriate Gas Budget">
+    Always set a reasonable gas budget to avoid transaction failures:
+    
+    ```typescript
+    const tx = new Transaction();
+    tx.setGasBudget(10000000); // 10M NANOS
+    ```
+  </Accordion>
+  
+  <Accordion title="Use Dry Run for Testing">
+    Test transactions with dry run before executing:
+    
+    ```typescript
+    const bytes = await tx.build({ client });
+    const dryRun = await client.dryRunTransactionBlock({
+      transactionBlock: bytes,
+    });
+    
+    if (dryRun.effects.status.status === 'success') {
+      // Safe to execute
+      await client.signAndExecuteTransaction({ signer, transaction: tx });
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle Transaction Results">
+    Always check transaction status and handle errors:
+    
+    ```typescript
+    const result = await client.signAndExecuteTransaction({
+      signer: keypair,
+      transaction: tx,
+      options: { showEffects: true },
+    });
+    
+    if (result.effects?.status?.status !== 'success') {
+      throw new Error(`Transaction failed: ${result.effects?.status?.error}`);
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Signing" icon="pen" href="./signing">
+    Learn about transaction signing with keypairs
+  </Card>
+  <Card title="Sponsored Transactions" icon="hand-holding-dollar" href="./sponsored-transactions">
+    Execute transactions sponsored by another account
+  </Card>
+  <Card title="Multisig" icon="users" href="./multisig">
+    Multi-signature transaction signing
+  </Card>
+  <Card title="Examples" icon="code" href="./examples">
+    See complete transaction examples
+  </Card>
+</CardGroup>

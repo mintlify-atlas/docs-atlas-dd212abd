@@ -1,0 +1,130 @@
+---
+title: IOTA Move Framework Overview
+description: Introduction to the IOTA Move Framework - a comprehensive library for building secure smart contracts on IOTA
+---
+
+# IOTA Move Framework
+
+The IOTA Move Framework is a comprehensive library of Move modules that provides the foundational building blocks for developing smart contracts on the IOTA blockchain. It includes essential functionality for asset management, object ownership, cryptography, and common data structures.
+
+## What is Move?
+
+Move is a safe and secure programming language designed for blockchain applications. It provides:
+
+- **Resource safety**: Assets are represented as resources that cannot be copied or implicitly discarded
+- **Type safety**: Strong static typing prevents many common programming errors
+- **Formal verification**: The language is designed to be formally verified for correctness
+- **Module system**: Code is organized into reusable modules
+
+## Framework Architecture
+
+The IOTA Move Framework is organized into several key areas:
+
+### Core Object System
+
+The object system provides the fundamental types and operations for working with on-chain assets:
+
+- `object` - Object identifiers and UID management
+- `transfer` - Ownership transfer operations
+- `tx_context` - Transaction context and metadata
+
+### Asset Management
+
+Modules for creating and managing fungible and non-fungible assets:
+
+- `coin` - Fungible token implementation
+- `balance` - Low-level balance operations
+- `token` - Advanced token functionality
+- `kiosk` - Decentralized trading platform
+
+### Data Structures
+
+Common collection types built on IOTA's object system:
+
+- `table` - Key-value storage
+- `bag` - Heterogeneous collections
+- `vec_map` - Vector-based maps
+- `vec_set` - Vector-based sets
+- `dynamic_field` - Dynamic object fields
+
+### System Functions
+
+- `clock` - Access to blockchain time
+- `event` - Event emission
+- `package` - Package management and upgrades
+- `display` - Object display metadata
+
+## Key Concepts
+
+### Objects and UIDs
+
+Every IOTA object must have a unique identifier (`UID`). Objects are structs with the `key` ability:
+
+```move
+public struct MyObject has key {
+    id: UID,
+    value: u64,
+}
+```
+
+### Ownership Models
+
+IOTA supports multiple ownership models:
+
+- **Owned objects**: Owned by a specific address
+- **Shared objects**: Can be accessed by anyone
+- **Immutable objects**: Frozen and cannot be modified
+
+### Abilities
+
+Move types can have abilities that determine what operations are allowed:
+
+- `copy` - Can be copied
+- `drop` - Can be discarded
+- `store` - Can be stored inside other structs
+- `key` - Can be used as a key for global storage
+
+## Getting Started
+
+To use the IOTA Move Framework in your project:
+
+1. **Import modules** in your Move.toml:
+```toml
+[dependencies]
+Iota = { git = "https://github.com/iotaledger/iota.git", subdir = "crates/iota-framework/packages/iota-framework", rev = "framework/mainnet" }
+```
+
+2. **Use framework modules** in your code:
+```move
+module my_package::my_module {
+    use iota::object::{Self, UID};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    public struct MyObject has key {
+        id: UID,
+        value: u64,
+    }
+
+    public fun create(value: u64, ctx: &mut TxContext) {
+        let obj = MyObject {
+            id: object::new(ctx),
+            value,
+        };
+        transfer::transfer(obj, ctx.sender());
+    }
+}
+```
+
+## Framework Location
+
+The framework source code is located at:
+```
+crates/iota-framework/packages/iota-framework/sources/
+```
+
+## Next Steps
+
+- Explore the [Standard Library](/move/standard-library) overview
+- Learn about core modules like [Object](/move/modules/object) and [Transfer](/move/modules/transfer)
+- Study common [design patterns](/move/patterns/capability) used in Move development

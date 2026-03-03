@@ -1,0 +1,332 @@
+---
+title: Governance API Methods
+description: JSON-RPC methods for accessing staking, validator, and governance data
+---
+
+The Governance API provides access to validator and staking-related data such as current committee info, delegated stakes, and APY. All methods are in the `iotax` namespace.
+
+## iotax_getStakes
+
+Return all DelegatedStake objects for an address.
+
+<ParamField path="owner" type="IotaAddress" required>
+  The owner's IOTA address
+</ParamField>
+
+<ResponseField name="stakes" type="Vec<DelegatedStake>">
+  List of delegated stakes
+  
+  <Expandable title="DelegatedStake">
+    <ResponseField name="stakedIotaId" type="ObjectID">
+      The object ID of the staked IOTA
+    </ResponseField>
+    <ResponseField name="stakeRequestEpoch" type="BigInt<u64>">
+      The epoch when the stake was requested
+    </ResponseField>
+    <ResponseField name="stakeActiveEpoch" type="BigInt<u64>">
+      The epoch when the stake becomes active
+    </ResponseField>
+    <ResponseField name="principal" type="BigInt<u64>">
+      The principal amount staked
+    </ResponseField>
+    <ResponseField name="status" type="String">
+      Status: "Active", "Pending", or "Unstaked"
+    </ResponseField>
+    <ResponseField name="estimatedReward" type="BigInt<u64>">
+      Estimated reward for active stakes
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iotax_getStakes",
+    "params": [
+      "0x0479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747"
+    ]
+  }'
+```
+
+## iotax_getStakesByIds
+
+Return one or more DelegatedStake objects by their staked IOTA IDs.
+
+<ParamField path="staked_iota_ids" type="Vec<ObjectID>" required>
+  List of staked IOTA object IDs
+</ParamField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iotax_getStakesByIds",
+    "params": [
+      [
+        "0x1234567890abcdef",
+        "0xfedcba0987654321"
+      ]
+    ]
+  }'
+```
+
+## iotax_getTimelockedStakes
+
+Return all DelegatedTimelockedStake objects for an address.
+
+<ParamField path="owner" type="IotaAddress" required>
+  The owner's IOTA address
+</ParamField>
+
+<ResponseField name="timelockedStakes" type="Vec<DelegatedTimelockedStake>">
+  List of timelocked delegated stakes
+  
+  <Expandable title="DelegatedTimelockedStake">
+    <ResponseField name="timelockedStakedIotaId" type="ObjectID">
+      The object ID of the timelocked staked IOTA
+    </ResponseField>
+    <ResponseField name="stakeRequestEpoch" type="BigInt<u64>">
+      The epoch when the stake was requested
+    </ResponseField>
+    <ResponseField name="stakeActiveEpoch" type="BigInt<u64>">
+      The epoch when the stake becomes active
+    </ResponseField>
+    <ResponseField name="principal" type="BigInt<u64>">
+      The principal amount staked
+    </ResponseField>
+    <ResponseField name="status" type="String">
+      Status: "Active", "Pending", or "Unstaked"
+    </ResponseField>
+    <ResponseField name="expirationTimestampMs" type="BigInt<u64>">
+      When the timelock expires (milliseconds since epoch)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iotax_getTimelockedStakes",
+    "params": [
+      "0x0479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747"
+    ]
+  }'
+```
+
+## iotax_getTimelockedStakesByIds
+
+Return one or more DelegatedTimelockedStake objects by their timelocked staked IOTA IDs.
+
+<ParamField path="timelocked_staked_iota_ids" type="Vec<ObjectID>" required>
+  List of timelocked staked IOTA object IDs
+</ParamField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iotax_getTimelockedStakesByIds",
+    "params": [
+      [
+        "0x1234567890abcdef"
+      ]
+    ]
+  }'
+```
+
+## iotax_getCommitteeInfo
+
+Return the committee information for the asked epoch.
+
+<ParamField path="epoch" type="BigInt<u64>">
+  The epoch of interest. If None, defaults to the latest epoch
+</ParamField>
+
+<ResponseField name="epoch" type="BigInt<u64>">
+  The epoch number
+</ResponseField>
+
+<ResponseField name="validators" type="Vec<CommitteeValidator>">
+  List of validators in the committee
+  
+  <Expandable title="CommitteeValidator">
+    <ResponseField name="authorityName" type="String">
+      The validator's name
+    </ResponseField>
+    <ResponseField name="iotaAddress" type="IotaAddress">
+      The validator's IOTA address
+    </ResponseField>
+    <ResponseField name="stakingPoolId" type="ObjectID">
+      The staking pool object ID
+    </ResponseField>
+    <ResponseField name="votingPower" type="BigInt<u64>">
+      The validator's voting power
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iotax_getCommitteeInfo",
+    "params": [null]
+  }'
+```
+
+## iotax_getLatestIotaSystemStateV2
+
+Return the latest IOTA system state object.
+
+<ResponseField name="epoch" type="BigInt<u64>">
+  The current epoch
+</ResponseField>
+
+<ResponseField name="protocolVersion" type="BigInt<u64>">
+  The current protocol version
+</ResponseField>
+
+<ResponseField name="systemStateVersion" type="BigInt<u64>">
+  The system state version
+</ResponseField>
+
+<ResponseField name="iotaTotalSupply" type="BigInt<u64>">
+  Total supply of IOTA
+</ResponseField>
+
+<ResponseField name="iotaTreasuryCapId" type="ObjectID">
+  The treasury cap object ID
+</ResponseField>
+
+<ResponseField name="storageRebate" type="BigInt<u64>">
+  Current storage rebate
+</ResponseField>
+
+<ResponseField name="activeValidators" type="Vec<ValidatorSummary>">
+  List of active validators
+</ResponseField>
+
+<ResponseField name="pendingActiveValidatorsId" type="ObjectID">
+  ID for pending active validators table
+</ResponseField>
+
+<ResponseField name="pendingActiveValidatorsSize" type="BigInt<u64>">
+  Number of pending active validators
+</ResponseField>
+
+<ResponseField name="stakingPoolMappingsId" type="ObjectID">
+  ID for staking pool mappings table
+</ResponseField>
+
+<ResponseField name="stakingPoolMappingsSize" type="BigInt<u64>">
+  Number of staking pool mappings
+</ResponseField>
+
+<ResponseField name="inactivePoolsId" type="ObjectID">
+  ID for inactive pools table
+</ResponseField>
+
+<ResponseField name="inactivePoolsSize" type="BigInt<u64>">
+  Number of inactive pools
+</ResponseField>
+
+<ResponseField name="validatorCandidatesId" type="ObjectID">
+  ID for validator candidates table
+</ResponseField>
+
+<ResponseField name="validatorCandidatesSize" type="BigInt<u64>">
+  Number of validator candidates
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iotax_getLatestIotaSystemStateV2",
+    "params": []
+  }'
+```
+
+## iotax_getReferenceGasPrice
+
+Return the reference gas price for the network.
+
+<ResponseField name="result" type="BigInt<u64>">
+  The reference gas price in NANOS
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iotax_getReferenceGasPrice",
+    "params": []
+  }'
+```
+
+## iotax_getValidatorsApy
+
+Return the validator APY (Annual Percentage Yield) information.
+
+<ResponseField name="apys" type="Vec<ValidatorApy>">
+  List of validator APY information
+  
+  <Expandable title="ValidatorApy">
+    <ResponseField name="address" type="IotaAddress">
+      The validator's address
+    </ResponseField>
+    <ResponseField name="apy" type="f64">
+      The validator's APY as a decimal (e.g., 0.05 = 5%)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="epoch" type="BigInt<u64>">
+  The epoch for which APY is calculated
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iotax_getValidatorsApy",
+    "params": []
+  }'
+```
+
+## Staking Workflow
+
+Typical staking operations involve:
+
+1. **Query Validators** - Use `iotax_getLatestIotaSystemStateV2` to get validator information
+2. **Check APY** - Use `iotax_getValidatorsApy` to compare validator rewards
+3. **Stake IOTA** - Build and execute a staking transaction
+4. **Monitor Stakes** - Use `iotax_getStakes` to track your delegated stakes
+5. **Unstake** - Build and execute an unstaking transaction when desired
+
+## Understanding Epochs
+
+IOTA's staking system operates on epochs:
+
+- Staking requests become active in the next epoch
+- Unstaking requests are processed at epoch boundaries
+- Rewards are calculated and distributed per epoch
+- Use `iotax_getCommitteeInfo` to query historical epoch data

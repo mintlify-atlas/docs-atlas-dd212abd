@@ -1,0 +1,286 @@
+---
+title: Write API Methods
+description: JSON-RPC methods for executing transactions and calling Move view functions
+---
+
+The Write API provides methods for executing transactions and testing them before submission.
+
+## iota_executeTransactionBlock
+
+Execute the transaction and wait for results if desired.
+
+<ParamField path="tx_bytes" type="Base64" required>
+  BCS serialized transaction data bytes without its type tag, as base-64 encoded string
+</ParamField>
+
+<ParamField path="signatures" type="Vec<Base64>" required>
+  A list of signatures (`flag || signature || pubkey` bytes, as base-64 encoded string). Signature is committed to the intent message of the transaction data
+</ParamField>
+
+<ParamField path="options" type="IotaTransactionBlockResponseOptions">
+  Options for specifying the content to be returned
+  
+  <Expandable title="IotaTransactionBlockResponseOptions">
+    <ResponseField name="showInput" type="boolean">
+      Include transaction input data
+    </ResponseField>
+    <ResponseField name="showEffects" type="boolean">
+      Include transaction effects
+    </ResponseField>
+    <ResponseField name="showEvents" type="boolean">
+      Include events emitted by the transaction
+    </ResponseField>
+    <ResponseField name="showObjectChanges" type="boolean">
+      Include object changes
+    </ResponseField>
+    <ResponseField name="showBalanceChanges" type="boolean">
+      Include balance changes
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="request_type" type="ExecuteTransactionRequestType">
+  The request type, derived from `IotaTransactionBlockResponseOptions` if None
+  
+  Options:
+  - `WaitForEffectsCert` - Waits for TransactionEffectsCert and then returns to client. This mode is a proxy for transaction finality.
+  - `WaitForLocalExecution` - Waits for TransactionEffectsCert and ensures the node executed the transaction locally before returning. If the node fails to execute locally in a timely manner, a bool in the response indicates this.
+</ParamField>
+
+<ResponseField name="digest" type="TransactionDigest">
+  The transaction digest
+</ResponseField>
+
+<ResponseField name="transaction" type="Transaction">
+  The transaction data
+</ResponseField>
+
+<ResponseField name="effects" type="TransactionEffects">
+  The effects of executing the transaction
+</ResponseField>
+
+<ResponseField name="confirmedLocalExecution" type="boolean">
+  Whether the transaction was executed locally on this node
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_executeTransactionBlock",
+    "params": [
+      "AAACACCNu5i3R...truncated-base64...",
+      [
+        "ANjGTW36LqS...truncated-base64..."
+      ],
+      {
+        "showInput": true,
+        "showEffects": true,
+        "showEvents": true,
+        "showObjectChanges": true,
+        "showBalanceChanges": true
+      },
+      "WaitForLocalExecution"
+    ]
+  }'
+```
+
+## iota_view
+
+Calls a Move view function with the given package object ID, module, and function names.
+
+<ParamField path="function_name" type="String" required>
+  The fully qualified function name in the format `<package_id>::<module_name>::<function_name>`
+  
+  Example: `0x3::iota_system::get_total_iota_supply`
+</ParamField>
+
+<ParamField path="type_args" type="Vec<IotaTypeTag>">
+  Type arguments for the Move function call
+</ParamField>
+
+<ParamField path="arguments" type="Vec<IotaJsonValue>" required>
+  Arguments to pass to the Move function
+</ParamField>
+
+<ResponseField name="results" type="Vec<Vec<u8>>">
+  The return values from the view function as BCS-encoded bytes
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_view",
+    "params": [
+      "0x3::iota_system::get_total_iota_supply",
+      [],
+      []
+    ]
+  }'
+```
+
+### Example: Query Object Type
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_view",
+    "params": [
+      "0x2::dynamic_field::exists_with_type",
+      [
+        "0x2::object::ID",
+        "0x2::balance::Balance<0x2::iota::IOTA>"
+      ],
+      [
+        "0x5",
+        "0x1234567890abcdef"
+      ]
+    ]
+  }'
+```
+
+## iota_devInspectTransactionBlock
+
+Runs the transaction in dev-inspect mode, which allows for nearly any transaction (or Move call) with any arguments. Detailed results are provided, including both the transaction effects and any return values.
+
+<ParamField path="sender_address" type="IotaAddress" required>
+  The address to use as the sender for the dev-inspect transaction
+</ParamField>
+
+<ParamField path="tx_bytes" type="Base64" required>
+  BCS encoded TransactionKind (as opposed to TransactionData, which includes gasBudget and gasPrice)
+</ParamField>
+
+<ParamField path="gas_price" type="BigInt<u64>">
+  Gas is not charged, but gas usage is still calculated. Defaults to the reference gas price if not provided
+</ParamField>
+
+<ParamField path="epoch" type="BigInt<u64>">
+  The epoch to perform the call. Will be set from the system state object if not provided
+</ParamField>
+
+<ParamField path="additional_args" type="DevInspectArgs">
+  Additional arguments including gas_budget, gas_objects, gas_sponsor and skip_checks
+  
+  <Expandable title="DevInspectArgs">
+    <ResponseField name="gasPrice" type="BigInt<u64>">
+      Gas price for the transaction
+    </ResponseField>
+    <ResponseField name="gasBudget" type="BigInt<u64>">
+      Gas budget for the transaction
+    </ResponseField>
+    <ResponseField name="gasSponsor" type="IotaAddress">
+      Address paying for gas
+    </ResponseField>
+    <ResponseField name="gasObjects" type="Vec<ObjectRef>">
+      Gas objects to use
+    </ResponseField>
+    <ResponseField name="skipChecks" type="boolean">
+      Skip various checks (signature, gas, object ownership, etc.)
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="effects" type="TransactionEffects">
+  The effects of executing the transaction
+</ResponseField>
+
+<ResponseField name="events" type="Vec<IotaEvent>">
+  Events emitted during execution
+</ResponseField>
+
+<ResponseField name="results" type="Vec<DevInspectResult>">
+  Results from the dev-inspect, including return values
+</ResponseField>
+
+<ResponseField name="error" type="String">
+  Error message if the transaction failed
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_devInspectTransactionBlock",
+    "params": [
+      "0x0479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747",
+      "AAACACCNu5i3R...truncated-base64...",
+      null,
+      null,
+      {
+        "skipChecks": false
+      }
+    ]
+  }'
+```
+
+## iota_dryRunTransactionBlock
+
+Return transaction execution effects including the gas cost summary, while the effects are not committed to the chain.
+
+<ParamField path="tx_bytes" type="Base64" required>
+  BCS serialized transaction data bytes, as base-64 encoded string
+</ParamField>
+
+<ResponseField name="effects" type="TransactionEffects">
+  The effects of executing the transaction
+</ResponseField>
+
+<ResponseField name="events" type="Vec<IotaEvent>">
+  Events emitted during execution
+</ResponseField>
+
+<ResponseField name="objectChanges" type="Vec<ObjectChange>">
+  Changes to objects resulting from the transaction
+</ResponseField>
+
+<ResponseField name="balanceChanges" type="Vec<BalanceChange>">
+  Changes to balances resulting from the transaction
+</ResponseField>
+
+<ResponseField name="input" type="TransactionData">
+  The input transaction data
+</ResponseField>
+
+```bash cURL
+curl -X POST https://api.iota.io \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_dryRunTransactionBlock",
+    "params": [
+      "AAACACCNu5i3R...truncated-base64..."
+    ]
+  }'
+```
+
+## Transaction Building Workflow
+
+Typically, executing a transaction involves these steps:
+
+1. **Build Transaction** - Construct the transaction using SDK methods or transaction builder APIs
+2. **Dry Run (Optional)** - Use `iota_dryRunTransactionBlock` to preview effects and gas costs
+3. **Dev Inspect (Optional)** - Use `iota_devInspectTransactionBlock` for detailed debugging
+4. **Sign Transaction** - Sign the transaction bytes with your private key
+5. **Execute Transaction** - Submit via `iota_executeTransactionBlock`
+
+## Gas Configuration
+
+All transactions require gas configuration:
+
+- **Gas Budget** - Maximum IOTA to spend on gas (in NANOS)
+- **Gas Price** - Price per unit of gas (use reference gas price or higher)
+- **Gas Objects** - IOTA coin objects to use for paying gas
+
+You can query the reference gas price using the Governance API's `iotax_getReferenceGasPrice` method.

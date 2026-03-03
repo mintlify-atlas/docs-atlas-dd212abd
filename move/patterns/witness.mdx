@@ -1,0 +1,430 @@
+---
+title: Witness Pattern
+description: Use one-time witnesses to prove module authority and ensure unique initialization
+---
+
+# Witness Pattern
+
+The Witness pattern uses a special type to prove that a function was called from a specific module. The most common form is the **One-Time Witness (OTW)**, which can only be created once during module initialization.
+
+## One-Time Witness (OTW)
+
+A One-Time Witness is a type that:
+- Has only the `drop` ability
+- Is named the same as the module but in UPPERCASE
+- Is created automatically by the runtime during `init`
+- Can only be used once
+
+### Basic OTW Pattern
+
+```move
+module example::my_module {
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    /// One-Time Witness type (same name as module, but uppercase)
+    public struct MY_MODULE has drop {}
+
+    /// Called exactly once when the module is published
+    fun init(otw: MY_MODULE, ctx: &mut TxContext) {
+        // otw is automatically created by the runtime
+        // Can only be used here, in this one call
+        
+        // Use the witness to prove module authority
+        let publisher = package::claim(otw, ctx);
+        transfer::public_transfer(publisher, ctx.sender());
+    }
+}
+```
+
+## Creating a Currency with OTW
+
+The most common use of OTW is creating currencies:
+
+```move
+module example::my_coin {
+    use iota::coin::{Self, TreasuryCap};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    /// One-Time Witness
+    public struct MY_COIN has drop {}
+
+    fun init(witness: MY_COIN, ctx: &mut TxContext) {
+        let (treasury, metadata) = coin::create_currency(
+            witness,  // Proves this is the module defining MY_COIN
+            9,        // Decimals
+            b"MYCOIN",
+            b"My Coin",
+            b"A custom coin on IOTA",
+            option::none(),
+            ctx
+        );
+        
+        transfer::public_freeze_object(metadata);
+        transfer::public_transfer(treasury, ctx.sender());
+    }
+}
+```
+
+## Claiming Publisher with OTW
+
+Use OTW to claim a `Publisher` object:
+
+```move
+module example::my_nft {
+    use iota::package::{Self, Publisher};
+    use iota::display::{Self, Display};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    public struct MY_NFT has drop {}
+
+    public struct NFT has key, store {
+        id: UID,
+        name: vector<u8>,
+        image_url: vector<u8>,
+    }
+
+    fun init(otw: MY_NFT, ctx: &mut TxContext) {
+        // Claim Publisher using OTW
+        let publisher = package::claim(otw, ctx);
+        
+        // Create Display using Publisher
+        let mut display = display::new<NFT>(&publisher, ctx);
+        display::add(&mut display, b"name", b"{name}");
+        display::add(&mut display, b"image_url", b"{image_url}");
+        display::update_version(&mut display);
+        
+        transfer::public_transfer(publisher, ctx.sender());
+        transfer::public_transfer(display, ctx.sender());
+    }
+}
+```
+
+## Witness for Type Safety
+
+Witnesses can be used as type-level proofs:
+
+```move
+module example::typed_id {
+    use iota::object::{Self, UID};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    /// Generic ID tagged with a witness type
+    public struct TypedID<phantom T: drop> has key, store {
+        id: UID,
+    }
+
+    /// Only the module that defines T can create TypedID<T>
+    public fun create<T: drop>(witness: T, ctx: &mut TxContext): TypedID<T> {
+        TypedID { id: object::new(ctx) }
+    }
+}
+
+module example::user {
+    use example::typed_id;
+    
+    public struct USER has drop {}
+    
+    fun create_user_id(ctx: &mut TxContext) {
+        // Only this module can create TypedID<USER>
+        let id = typed_id::create(USER {}, ctx);
+        // ...
+    }
+}
+```
+
+## Witness for Balance Creation
+
+Create a supply using a witness:
+
+```move
+module example::game_points {
+    use iota::balance::{Self, Balance, Supply};
+    use iota::object::{Self, UID};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    public struct GAME_POINTS has drop {}
+
+    public struct PointsManager has key {
+        id: UID,
+        supply: Supply<GAME_POINTS>,
+    }
+
+    fun init(witness: GAME_POINTS, ctx: &mut TxContext) {
+        let manager = PointsManager {
+            id: object::new(ctx),
+            supply: balance::create_supply(witness),
+        };
+        transfer::share_object(manager);
+    }
+
+    public fun mint(
+        manager: &mut PointsManager,
+        amount: u64,
+    ): Balance<GAME_POINTS> {
+        manager.supply.increase_supply(amount)
+    }
+}
+```
+
+## Regular Witness Pattern
+
+Not all witnesses are one-time. You can create regular witnesses:
+
+```move
+module example::witness_auth {
+    use iota::object::{Self, UID};
+
+    /// Regular witness (can be created multiple times)
+    public struct Witness has drop {}
+
+    /// Only this module can create Witness
+    public(package) fun create_witness(): Witness {
+        Witness {}
+    }
+
+    public struct ProtectedObject<phantom T: drop> has key {
+        id: UID,
+        data: vector<u8>,
+    }
+
+    /// Create object, requires witness to prove caller authority
+    public fun create<T: drop>(
+        _witness: T,
+        data: vector<u8>,
+        ctx: &mut TxContext
+    ): ProtectedObject<T> {
+        ProtectedObject {
+            id: object::new(ctx),
+            data,
+        }
+    }
+}
+
+module example::user {
+    use example::witness_auth::{Self, ProtectedObject};
+
+    public struct USER has drop {}
+
+    public fun create_user_object(ctx: &mut TxContext): ProtectedObject<USER> {
+        witness_auth::create(USER {}, b"user data", ctx)
+    }
+}
+```
+
+## Phantom Witness Types
+
+Use phantom type parameters for type-level authorization:
+
+```move
+module example::registry {
+    use iota::object::{Self, UID};
+    use iota::table::{Self, Table};
+    use iota::tx_context::TxContext;
+
+    /// Registry parameterized by witness type
+    public struct Registry<phantom T: drop> has key {
+        id: UID,
+        items: Table<address, u64>,
+    }
+
+    /// Only module that defines T can create Registry<T>
+    public fun create<T: drop>(_witness: T, ctx: &mut TxContext): Registry<T> {
+        Registry {
+            id: object::new(ctx),
+            items: table::new(ctx),
+        }
+    }
+
+    public fun add<T: drop>(
+        registry: &mut Registry<T>,
+        key: address,
+        value: u64
+    ) {
+        table::add(&mut registry.items, key, value);
+    }
+}
+
+module example::my_app {
+    use example::registry;
+    
+    public struct MY_APP has drop {}
+    
+    fun init(ctx: &mut TxContext) {
+        // Create registry for MY_APP
+        let registry = registry::create(MY_APP {}, ctx);
+        transfer::share_object(registry);
+    }
+}
+```
+
+## Verifying One-Time Witness
+
+The `iota::types` module provides verification:
+
+```move
+use iota::types;
+
+public fun create_with_otw<T: drop>(witness: T, ctx: &mut TxContext) {
+    // Verify it's a one-time witness
+    assert!(types::is_one_time_witness(&witness), ENotOneTimeWitness);
+    
+    // Use the witness
+    // ...
+}
+```
+
+## Complete Example: NFT Collection
+
+```move
+module example::nft_collection {
+    use iota::package::{Self, Publisher};
+    use iota::display::{Self, Display};
+    use iota::object::{Self, UID, ID};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+    use std::string::String;
+
+    /// One-Time Witness
+    public struct NFT_COLLECTION has drop {}
+
+    public struct NFT has key, store {
+        id: UID,
+        name: String,
+        description: String,
+        image_url: String,
+        collection_id: ID,
+    }
+
+    public struct Collection has key {
+        id: UID,
+        name: String,
+        publisher: ID,
+    }
+
+    public struct MintCap has key, store {
+        id: UID,
+        collection_id: ID,
+    }
+
+    fun init(otw: NFT_COLLECTION, ctx: &mut TxContext) {
+        // Claim Publisher
+        let publisher = package::claim(otw, ctx);
+        let publisher_id = object::id(&publisher);
+        
+        // Create Display for NFT type
+        let mut display = display::new<NFT>(&publisher, ctx);
+        display::add(&mut display, b"name", b"{name}");
+        display::add(&mut display, b"description", b"{description}");
+        display::add(&mut display, b"image_url", b"{image_url}");
+        display::update_version(&mut display);
+        
+        // Create collection
+        let collection = Collection {
+            id: object::new(ctx),
+            name: string::utf8(b"My NFT Collection"),
+            publisher: publisher_id,
+        };
+        let collection_id = object::id(&collection);
+        
+        // Create mint capability
+        let mint_cap = MintCap {
+            id: object::new(ctx),
+            collection_id,
+        };
+        
+        // Transfer objects
+        transfer::public_transfer(publisher, ctx.sender());
+        transfer::public_transfer(display, ctx.sender());
+        transfer::share_object(collection);
+        transfer::transfer(mint_cap, ctx.sender());
+    }
+
+    public fun mint(
+        cap: &MintCap,
+        collection: &Collection,
+        name: String,
+        description: String,
+        image_url: String,
+        recipient: address,
+        ctx: &mut TxContext
+    ) {
+        assert!(object::id(collection) == cap.collection_id, 0);
+        
+        let nft = NFT {
+            id: object::new(ctx),
+            name,
+            description,
+            image_url,
+            collection_id: cap.collection_id,
+        };
+        
+        transfer::public_transfer(nft, recipient);
+    }
+}
+```
+
+## Witness vs Capability
+
+| Aspect | Witness | Capability |
+|--------|---------|------------|
+| Purpose | Prove module authority | Grant permissions |
+| Ability | `drop` only | `key` + optional `store` |
+| Storage | Cannot be stored | Can be stored |
+| Transfer | Cannot be transferred | Can be transferred |
+| Use case | Type-level proofs | Access control |
+| Lifetime | Function scope | Persistent |
+
+## Best Practices
+
+1. **Use OTW for initialization**: Always use one-time witness in `init` for one-time setup
+
+2. **Name correctly**: OTW must be the module name in UPPERCASE
+
+3. **Verify when needed**: Use `types::is_one_time_witness` when verification is critical
+
+4. **Phantom types for authorization**: Use `phantom T: drop` for type-level authorization
+
+5. **Don't store witnesses**: Witnesses should have `drop` only, never `store` or `key`
+
+6. **Document witness requirements**: Clearly document when functions require witnesses
+
+7. **Combine with capabilities**: Use witnesses for initialization, capabilities for ongoing access control
+
+## Common Patterns
+
+### Currency Creation
+```move
+fun init(otw: COIN_NAME, ctx: &mut TxContext) {
+    let (treasury, metadata) = coin::create_currency(otw, ...);
+}
+```
+
+### Publisher Claiming
+```move
+fun init(otw: MODULE_NAME, ctx: &mut TxContext) {
+    let publisher = package::claim(otw, ctx);
+}
+```
+
+### Supply Creation
+```move
+fun init(witness: TYPE_NAME, ctx: &mut TxContext) {
+    let supply = balance::create_supply(witness);
+}
+```
+
+### Type-Safe Objects
+```move
+public struct Tagged<phantom T: drop> has key {
+    id: UID,
+}
+
+public fun create<T: drop>(_witness: T, ctx: &mut TxContext): Tagged<T> {
+    Tagged { id: object::new(ctx) }
+}
+```

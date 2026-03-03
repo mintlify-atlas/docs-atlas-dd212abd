@@ -1,0 +1,699 @@
+---
+title: GraphQL Examples
+description: Common GraphQL query patterns and real-world examples
+---
+
+This page provides practical examples of common GraphQL queries for the IOTA blockchain.
+
+## Basic Queries
+
+### Get Chain Information
+
+```graphql
+{
+  chainIdentifier
+  epoch {
+    epochId
+    referenceGasPrice
+  }
+  serviceConfig {
+    maxQueryDepth
+    maxPageSize
+  }
+}
+```
+
+### Get Protocol Version
+
+```graphql
+{
+  protocolConfig {
+    protocolVersion
+    configs {
+      key
+      value
+    }
+  }
+}
+```
+
+## Address Queries
+
+### Get Address Balance and Coins
+
+```graphql
+{
+  address(address: "0x479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747") {
+    address
+    balance {
+      coinType {
+        repr
+      }
+      coinObjectCount
+      totalBalance
+    }
+    coins(first: 10) {
+      nodes {
+        contents {
+          type {
+            repr
+          }
+        }
+        coinObjectId
+        balance
+      }
+    }
+  }
+}
+```
+
+### Get All Balances for an Address
+
+```graphql
+{
+  address(address: "0x479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747") {
+    balances {
+      nodes {
+        coinType {
+          repr
+        }
+        totalBalance
+        coinObjectCount
+      }
+    }
+  }
+}
+```
+
+### Get Objects Owned by Address
+
+```graphql
+{
+  address(address: "0x479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747") {
+    objects(first: 10) {
+      nodes {
+        address
+        version
+        digest
+        storageRebate
+        owner {
+          __typename
+          ... on AddressOwner {
+            owner {
+              address
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+## Object Queries
+
+### Get Object Details
+
+```graphql
+{
+  object(address: "0x281b97c4303f1571f64499b214c35d933ea5ad21522a608daffd2a5b2bd318d8") {
+    address
+    version
+    digest
+    storageRebate
+    owner {
+      __typename
+      ... on Shared {
+        initialSharedVersion
+      }
+      ... on Parent {
+        parent {
+          address
+        }
+      }
+      ... on AddressOwner {
+        owner {
+          address
+        }
+      }
+    }
+    previousTransactionBlock {
+      digest
+    }
+  }
+}
+```
+
+### Get Object with Move Content
+
+```graphql
+{
+  object(address: "0x5") {
+    address
+    asMoveObject {
+      contents {
+        type {
+          repr
+        }
+        json
+      }
+    }
+  }
+}
+```
+
+### Query Dynamic Fields
+
+```graphql
+{
+  object(address: "0x5") {
+    dynamicFields(first: 10) {
+      nodes {
+        name {
+          type { repr }
+          json
+          bcs
+        }
+        value {
+          ... on MoveValue {
+            type { repr }
+            json
+            bcs
+          }
+          ... on MoveObject {
+            contents {
+              type { repr }
+              json
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+## Transaction Queries
+
+### Get Transaction Block Details
+
+```graphql
+{
+  transactionBlock(digest: "Dv5XRBjWvZTwiHVrhUetvDTgxyM8xVMb6P8pCAZv51tq") {
+    sender {
+      address
+    }
+    gasInput {
+      gasSponsor {
+        address
+      }
+      gasPayment {
+        nodes {
+          address
+        }
+      }
+      gasPrice
+      gasBudget
+    }
+    kind {
+      __typename
+    }
+    signatures
+    digest
+    expiration {
+      epochId
+    }
+    effects {
+      timestamp
+      status
+      gasEffects {
+        gasSummary {
+          computationCost
+          storageCost
+          storageRebate
+        }
+      }
+      balanceChanges {
+        owner {
+          ... on AddressOwner {
+            owner { address }
+          }
+        }
+        amount
+        coinType { repr }
+      }
+    }
+  }
+}
+```
+
+### Get Transactions Sent by Address
+
+```graphql
+{
+  address(address: "0x479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747") {
+    transactionBlocks(first: 10, relation: SENT) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      nodes {
+        digest
+        sender { address }
+        effects {
+          timestamp
+          status
+        }
+      }
+    }
+  }
+}
+```
+
+### Get Transactions Received by Address
+
+```graphql
+{
+  address(address: "0x479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747") {
+    transactionBlocks(first: 10, relation: RECV) {
+      nodes {
+        digest
+        effects {
+          balanceChanges {
+            owner {
+              ... on AddressOwner {
+                owner { address }
+              }
+            }
+            amount
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### Filter Transactions by Function
+
+```graphql
+{
+  transactionBlocks(
+    first: 10
+    filter: { function: "0x2::coin::transfer" }
+  ) {
+    nodes {
+      digest
+      sender { address }
+      effects {
+        timestamp
+      }
+    }
+  }
+}
+```
+
+### Filter Transactions by Checkpoint Range
+
+```graphql
+{
+  transactionBlocks(
+    first: 10
+    filter: {
+      afterCheckpoint: 1000
+      beforeCheckpoint: 2000
+    }
+  ) {
+    nodes {
+      digest
+      effects {
+        checkpoint {
+          sequenceNumber
+        }
+      }
+    }
+  }
+}
+```
+
+## Checkpoint Queries
+
+### Get Latest Checkpoint
+
+```graphql
+{
+  checkpoint {
+    sequenceNumber
+    digest
+    timestamp
+    networkTotalTransactions
+    previousCheckpointDigest
+  }
+}
+```
+
+### Get Checkpoint with Transactions
+
+```graphql
+{
+  checkpoint(sequenceNumber: 1000) {
+    sequenceNumber
+    timestamp
+    transactionBlocks(first: 10) {
+      nodes {
+        digest
+        sender { address }
+      }
+    }
+  }
+}
+```
+
+### Get Multiple Checkpoints
+
+```graphql
+{
+  checkpoints(first: 10) {
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    nodes {
+      sequenceNumber
+      digest
+      timestamp
+      networkTotalTransactions
+    }
+  }
+}
+```
+
+## Event Queries
+
+### Get Events by Sender
+
+```graphql
+{
+  events(
+    first: 10
+    filter: { sender: "0x479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747" }
+  ) {
+    nodes {
+      sendingModule {
+        package { address }
+        name
+      }
+      type { repr }
+      sender { address }
+      timestamp
+      json
+    }
+  }
+}
+```
+
+### Get Events by Type
+
+```graphql
+{
+  events(
+    first: 10
+    filter: { eventType: "0x2::coin::CoinCreated<0x2::iota::IOTA>" }
+  ) {
+    nodes {
+      type { repr }
+      json
+      bcs
+      timestamp
+    }
+  }
+}
+```
+
+### Get Events by Package
+
+```graphql
+{
+  events(
+    first: 10
+    filter: { emittingPackage: "0x2" }
+  ) {
+    nodes {
+      sendingModule {
+        package { address }
+        name
+      }
+      type { repr }
+      json
+    }
+  }
+}
+```
+
+## Coin Queries
+
+### Get Coin Metadata
+
+```graphql
+{
+  coinMetadata(coinType: "0x2::iota::IOTA") {
+    decimals
+    name
+    symbol
+    description
+    iconUrl
+    supply
+  }
+}
+```
+
+### Get Coins of Specific Type
+
+```graphql
+{
+  address(address: "0x479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747") {
+    coins(first: 10, type: "0x2::iota::IOTA") {
+      nodes {
+        coinObjectId
+        balance
+        contents {
+          type { repr }
+        }
+      }
+    }
+  }
+}
+```
+
+## Staking Queries
+
+### Get Staked IOTA
+
+```graphql
+{
+  address(address: "0x479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747") {
+    stakedIotas(first: 10) {
+      nodes {
+        principal
+        estimatedReward
+        stakeRequestEpoch {
+          epochId
+        }
+        stakeActiveEpoch {
+          epochId
+        }
+      }
+    }
+  }
+}
+```
+
+### Get Validator Information
+
+```graphql
+{
+  iotaSystemStateV2 {
+    activeValidators {
+      name
+      iotaAddress
+      stakingPoolId
+      votingPower
+      commissionRate
+      nextEpochStake
+      nextEpochGasPrice
+      atRisk
+    }
+  }
+}
+```
+
+### Get Epoch Information
+
+```graphql
+{
+  epoch(id: 100) {
+    epochId
+    referenceGasPrice
+    startTimestamp
+    endTimestamp
+    totalCheckpoints
+    totalTransactions
+    totalGasFees
+    totalStakeRewards
+    totalStakeSubsidies
+    fundSize
+    netInflow
+    fundInflow
+    fundOutflow
+  }
+}
+```
+
+## System State Queries
+
+### Get System State Summary
+
+```graphql
+{
+  iotaSystemStateV2 {
+    epoch
+    protocolVersion
+    systemStateVersion
+    iotaTotalSupply
+    storageRebate
+    referenceGasPrice
+    safeMode
+    safeModeStorageRewards
+    safeModeComputationRewards
+    safeModeStorageRebates
+    safeModeNonRefundableStorageFee
+    epochStartTimestamp
+    epochDurationMs
+  }
+}
+```
+
+## Pagination Examples
+
+### Forward Pagination
+
+```graphql
+query GetCheckpoints($cursor: String) {
+  checkpoints(first: 10, after: $cursor) {
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    nodes {
+      sequenceNumber
+    }
+  }
+}
+```
+
+To get the next page, use the `endCursor` as the `after` parameter:
+
+```json
+{
+  "cursor": "eyJjIjo..." 
+}
+```
+
+### Backward Pagination
+
+```graphql
+query GetCheckpointsBackward($cursor: String) {
+  checkpoints(last: 10, before: $cursor) {
+    pageInfo {
+      hasPreviousPage
+      startCursor
+    }
+    nodes {
+      sequenceNumber
+    }
+  }
+}
+```
+
+## Complex Nested Queries
+
+### Get Address with Complete Transaction History
+
+```graphql
+{
+  address(address: "0x479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747") {
+    address
+    balance {
+      totalBalance
+      coinType { repr }
+    }
+    transactionBlocks(first: 5) {
+      nodes {
+        digest
+        sender { address }
+        effects {
+          status
+          timestamp
+          gasEffects {
+            gasSummary {
+              computationCost
+              storageCost
+            }
+          }
+          balanceChanges {
+            amount
+            coinType { repr }
+          }
+        }
+      }
+    }
+    stakedIotas(first: 5) {
+      nodes {
+        principal
+        estimatedReward
+      }
+    }
+  }
+}
+```
+
+### Get Checkpoint with Full Transaction Details
+
+```graphql
+{
+  checkpoint(sequenceNumber: 1000) {
+    sequenceNumber
+    timestamp
+    transactionBlocks(first: 3) {
+      nodes {
+        digest
+        sender { address }
+        effects {
+          status
+          timestamp
+          gasEffects {
+            gasSummary {
+              computationCost
+              storageCost
+              storageRebate
+            }
+          }
+          balanceChanges {
+            owner {
+              ... on AddressOwner {
+                owner { address }
+              }
+            }
+            amount
+            coinType { repr }
+          }
+          objectChanges {
+            idCreated
+            idDeleted
+          }
+        }
+      }
+    }
+  }
+}
+```

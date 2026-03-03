@@ -1,0 +1,743 @@
+---
+title: "Running a Local Network"
+description: "Guide to starting and managing local IOTA networks for development and testing"
+---
+
+The `iota start` command provides a simple way to run a local IOTA network for development and testing.
+
+## Basic Usage
+
+```bash
+iota start [OPTIONS]
+```
+
+### Quick Start
+
+<Steps>
+  <Step title="Start local network">
+    ```bash
+    iota start --force-regenesis
+    ```
+    
+    This starts a fresh network with:
+    - 1 validator node
+    - 1 fullnode with RPC on port 9000
+    - New genesis generated each run
+    - No state persistence
+  </Step>
+
+  <Step title="Connect client">
+    In another terminal:
+    ```bash
+    iota client new-env \
+      --alias localnet \
+      --rpc http://127.0.0.1:9000
+    
+    iota client switch --env localnet
+    ```
+  </Step>
+
+  <Step title="Get test tokens">
+    ```bash
+    iota client new-address ed25519
+    iota client faucet
+    ```
+  </Step>
+</Steps>
+
+Output:
+```
+Cluster started
+Fullnode URL: http://127.0.0.1:9000
+```
+
+## Network Modes
+
+### Ephemeral Mode (--force-regenesis)
+
+Start fresh each time with no state persistence:
+
+```bash
+iota start --force-regenesis [OPTIONS]
+```
+
+**Use cases:**
+- Quick testing
+- Reproducible test environments
+- CI/CD pipelines
+- Development iteration
+
+**Features:**
+- New genesis every run
+- No config directory required
+- Clean state
+- Fast startup
+
+### Persistent Mode
+
+Maintain state between runs:
+
+<Steps>
+  <Step title="Generate genesis">
+    ```bash
+    iota genesis --force --with-faucet
+    ```
+  </Step>
+
+  <Step title="Start network">
+    ```bash
+    iota start
+    ```
+    
+    This uses the genesis from `~/.iota/iota_config/`.
+  </Step>
+
+  <Step title="Stop and restart">
+    ```bash
+    # Press Ctrl+C to stop
+    
+    # Restart with same state
+    iota start
+    ```
+  </Step>
+</Steps>
+
+**Use cases:**
+- Long-running development
+- Testing state transitions
+- Upgrading contracts
+- Debugging state issues
+
+### Custom Config Directory
+
+Use a custom location for network config:
+
+```bash
+iota start --network.config <PATH>
+```
+
+Example:
+```bash
+# Generate genesis in custom directory
+iota genesis --working-dir ./my-network --force
+
+# Start with custom config
+iota start --network.config ./my-network
+```
+
+## Network Configuration
+
+### Validator Configuration
+
+#### Committee Size
+
+Set the number of validators:
+
+```bash
+iota start --force-regenesis --committee-size <N>
+```
+
+Examples:
+```bash
+# Single validator (default)
+iota start --force-regenesis --committee-size 1
+
+# Multi-validator setup
+iota start --force-regenesis --committee-size 4
+```
+
+<Note>
+  Committee size can only be set with `--force-regenesis` or when generating genesis.
+</Note>
+
+### Epoch Configuration
+
+Set epoch duration:
+
+```bash
+iota start --force-regenesis --epoch-duration-ms <MS>
+```
+
+Examples:
+```bash
+# 10 second epochs (fast testing)
+iota start --force-regenesis --epoch-duration-ms 10000
+
+# 1 minute epochs (default)
+iota start --force-regenesis --epoch-duration-ms 60000
+
+# 1 hour epochs
+iota start --force-regenesis --epoch-duration-ms 3600000
+```
+
+### Fullnode Configuration
+
+#### RPC Port
+
+Customize the RPC port:
+
+```bash
+iota start --force-regenesis --fullnode-rpc-port <PORT>
+```
+
+Example:
+```bash
+iota start --force-regenesis --fullnode-rpc-port 8080
+```
+
+Then connect:
+```bash
+iota client new-env --alias local --rpc http://127.0.0.1:8080
+```
+
+#### No Fullnode
+
+Run validators only (no fullnode):
+
+```bash
+iota start --force-regenesis --no-full-node
+```
+
+<Warning>
+  Without a fullnode, you cannot use RPC or run an indexer.
+</Warning>
+
+## Faucet Configuration
+
+Start network with a built-in faucet:
+
+```bash
+iota start --force-regenesis --with-faucet
+```
+
+### Faucet Options
+
+```bash
+iota start --force-regenesis \
+  --with-faucet=0.0.0.0:9123 \
+  --faucet-amount 500000000000 \
+  --faucet-coin-count 10
+```
+
+Options:
+- `--with-faucet[=HOST:PORT]` - Enable faucet (default: 0.0.0.0:9123)
+- `--faucet-amount <NANOS>` - Nanos per coin (default: 200,000,000,000)
+- `--faucet-coin-count <N>` - Coins per request (default: 5)
+
+### Using the Faucet
+
+```bash
+# Request tokens
+iota client faucet --url http://127.0.0.1:9123
+
+# Or use curl
+curl -X POST http://127.0.0.1:9123/v1/gas \
+  -H "Content-Type: application/json" \
+  -d '{"recipient": "0x1234..."}'
+```
+
+## Indexer & GraphQL
+
+<Note>
+  Indexer features require PostgreSQL and the `indexer` build feature.
+</Note>
+
+### Start with Indexer
+
+```bash
+iota start --force-regenesis \
+  --with-indexer=0.0.0.0:9124 \
+  --pg-host localhost \
+  --pg-port 5432 \
+  --pg-db-name iota_indexer \
+  --pg-user postgres \
+  --pg-password postgrespw
+```
+
+### Start with GraphQL
+
+```bash
+iota start --force-regenesis \
+  --with-indexer \
+  --with-graphql=0.0.0.0:9125 \
+  --pg-host localhost \
+  --pg-port 5432 \
+  --pg-db-name iota_indexer \
+  --pg-user postgres \
+  --pg-password postgrespw
+```
+
+<Note>
+  GraphQL requires the indexer. If `--with-graphql` is set without `--with-indexer`, the indexer is automatically enabled.
+</Note>
+
+### PostgreSQL Setup
+
+<Steps>
+  <Step title="Install PostgreSQL">
+    ```bash
+    # Ubuntu/Debian
+    sudo apt install postgresql
+    
+    # macOS
+    brew install postgresql
+    
+    # Start service
+    sudo systemctl start postgresql
+    # or on macOS:
+    brew services start postgresql
+    ```
+  </Step>
+
+  <Step title="Create database">
+    ```bash
+    sudo -u postgres psql
+    ```
+    
+    ```sql
+    CREATE DATABASE iota_indexer;
+    CREATE USER postgres WITH PASSWORD 'postgrespw';
+    GRANT ALL PRIVILEGES ON DATABASE iota_indexer TO postgres;
+    \q
+    ```
+  </Step>
+
+  <Step title="Start network with indexer">
+    ```bash
+    iota start --force-regenesis --with-indexer
+    ```
+  </Step>
+</Steps>
+
+### Data Ingestion
+
+Specify checkpoint data directory:
+
+```bash
+iota start --force-regenesis \
+  --with-indexer \
+  --data-ingestion-dir ./checkpoints
+```
+
+## Migration Snapshots
+
+Start network with migration data:
+
+```bash
+iota start --force-regenesis \
+  --local-migration-snapshots ./snapshot1.json ./snapshot2.json \
+  --remote-migration-snapshots iota \
+  --delegator 0x1234567890abcdef1234567890abcdef12345678
+```
+
+Options:
+- `--local-migration-snapshots <PATH>...` - Local snapshot files
+- `--remote-migration-snapshots <URL>...` - Remote snapshots (or `iota` for default)
+- `--delegator <ADDRESS>` - Delegator address (required with snapshots)
+
+## Protocol Config Overrides
+
+Override protocol parameters using environment variables:
+
+### Enable Overrides
+
+```bash
+export IOTA_PROTOCOL_CONFIG_OVERRIDE_ENABLE=1
+```
+
+### Set Overrides
+
+```bash
+# Increase checkpoint interval to >1/s
+export IOTA_PROTOCOL_CONFIG_OVERRIDE_min_checkpoint_interval_ms=1000
+
+# Adjust max transactions per checkpoint
+export IOTA_PROTOCOL_CONFIG_OVERRIDE_max_transactions_per_checkpoint=10000
+
+# Set max transaction size
+export IOTA_PROTOCOL_CONFIG_OVERRIDE_max_tx_size_bytes=131072
+
+# Start network
+iota start --force-regenesis
+```
+
+<Warning>
+  Protocol config overrides must match across all nodes. Mismatched configurations will break the network. Only use in local development.
+</Warning>
+
+## Complete Examples
+
+### Minimal Development Setup
+
+```bash
+iota start --force-regenesis
+```
+
+### Full-Featured Local Network
+
+```bash
+iota start --force-regenesis \
+  --committee-size 4 \
+  --epoch-duration-ms 60000 \
+  --with-faucet=0.0.0.0:9123 \
+  --faucet-amount 500000000000 \
+  --fullnode-rpc-port 9000
+```
+
+### With Indexer and GraphQL
+
+<Steps>
+  <Step title="Set up PostgreSQL">
+    ```bash
+    sudo -u postgres createdb iota_indexer
+    ```
+  </Step>
+
+  <Step title="Start network">
+    ```bash
+    iota start --force-regenesis \
+      --with-indexer=0.0.0.0:9124 \
+      --with-graphql=0.0.0.0:9125 \
+      --with-faucet \
+      --pg-host localhost \
+      --pg-port 5432 \
+      --pg-db-name iota_indexer \
+      --pg-user postgres \
+      --pg-password postgrespw
+    ```
+  </Step>
+
+  <Step title="Access services">
+    ```bash
+    # RPC
+    curl http://127.0.0.1:9000
+    
+    # Indexer
+    curl http://127.0.0.1:9124
+    
+    # GraphQL
+    curl http://127.0.0.1:9125/graphql
+    
+    # Faucet
+    curl -X POST http://127.0.0.1:9123/v1/gas \
+      -H "Content-Type: application/json" \
+      -d '{"recipient": "0x..."}'
+    ```
+  </Step>
+</Steps>
+
+### Persistent Network with Custom Config
+
+<Steps>
+  <Step title="Create config directory">
+    ```bash
+    mkdir -p ~/my-iota-network
+    ```
+  </Step>
+
+  <Step title="Generate genesis">
+    ```bash
+    iota genesis \
+      --working-dir ~/my-iota-network \
+      --force \
+      --committee-size 4 \
+      --epoch-duration-ms 60000 \
+      --with-faucet
+    ```
+  </Step>
+
+  <Step title="Start network">
+    ```bash
+    iota start --network.config ~/my-iota-network
+    ```
+  </Step>
+
+  <Step title="Stop and restart">
+    ```bash
+    # Ctrl+C to stop
+    
+    # Restart preserves state
+    iota start --network.config ~/my-iota-network
+    ```
+  </Step>
+</Steps>
+
+## Development Workflow
+
+### Iterative Development
+
+```bash
+# Terminal 1: Start network
+iota start --force-regenesis --with-faucet
+
+# Terminal 2: Development
+iota client switch --env localnet
+iota client new-address ed25519
+iota client faucet
+
+# Build and publish package
+cd my_package
+iota client publish --gas-budget 100000000
+
+# Test
+iota client call --package 0x... --module my_module --function test_fn
+
+# Restart for clean state
+# Terminal 1: Ctrl+C, then:
+iota start --force-regenesis --with-faucet
+```
+
+### Testing Upgrades
+
+<Steps>
+  <Step title="Start persistent network">
+    ```bash
+    iota genesis --force --with-faucet
+    iota start
+    ```
+  </Step>
+
+  <Step title="Publish v1">
+    ```bash
+    iota client publish --gas-budget 100000000
+    # Save UpgradeCap ID
+    ```
+  </Step>
+
+  <Step title="Make changes">
+    Edit your Move code.
+  </Step>
+
+  <Step title="Upgrade to v2">
+    ```bash
+    iota client upgrade \
+      --upgrade-capability 0xCAP_ID \
+      --gas-budget 100000000
+    ```
+  </Step>
+</Steps>
+
+### Multi-Validator Testing
+
+```bash
+# Start 4-validator network
+iota start --force-regenesis --committee-size 4
+
+# Test consensus behavior
+iota client call --package 0x2 --module coin --function mint ...
+
+# Observe epoch changes
+iota client active-env
+```
+
+## Monitoring
+
+### Health Checks
+
+The network performs health checks every 3 seconds:
+
+```
+Cluster started
+Fullnode URL: http://127.0.0.1:9000
+[Health check passed]
+[Health check passed]
+...
+```
+
+If a validator fails health checks 3 times consecutively, the network stops.
+
+### Logs
+
+Logs are output to stdout:
+
+```bash
+# Save logs to file
+iota start --force-regenesis 2>&1 | tee network.log
+
+# Filter logs
+iota start --force-regenesis 2>&1 | grep -E "(ERROR|WARN)"
+```
+
+### Network Status
+
+```bash
+# In another terminal
+iota client active-env
+
+# Check validator info
+iota client call \
+  --package 0x3 \
+  --module iota_system \
+  --function active_validators
+```
+
+## Troubleshooting
+
+### Port Already in Use
+
+**Error**: `Address already in use (os error 48)`
+
+Solution:
+```bash
+# Find process using port
+lsof -i :9000
+
+# Kill process
+kill -9 <PID>
+
+# Or use different port
+iota start --force-regenesis --fullnode-rpc-port 9001
+```
+
+### Genesis Issues
+
+**Error**: `Cannot pass --force-regenesis and --network.config`
+
+Solution:
+```bash
+# Don't mix modes - choose one:
+
+# Ephemeral (no config dir)
+iota start --force-regenesis
+
+# Persistent (with config dir)
+iota start --network.config <PATH>
+```
+
+**Error**: `Epoch duration can only be set with --force-regenesis`
+
+Solution:
+```bash
+# Either use --force-regenesis:
+iota start --force-regenesis --epoch-duration-ms 60000
+
+# Or set in genesis first:
+iota genesis --force --epoch-duration-ms 60000
+iota start
+```
+
+### Indexer Issues
+
+**Error**: `Cannot start the indexer without a fullnode`
+
+Solution:
+```bash
+# Remove --no-full-node flag
+iota start --force-regenesis --with-indexer
+```
+
+**Error**: `Failed to connect to PostgreSQL`
+
+Solution:
+```bash
+# Verify PostgreSQL is running
+sudo systemctl status postgresql
+
+# Test connection
+psql -h localhost -U postgres -d iota_indexer
+
+# Check credentials
+iota start --force-regenesis \
+  --with-indexer \
+  --pg-host localhost \
+  --pg-port 5432 \
+  --pg-db-name iota_indexer \
+  --pg-user postgres \
+  --pg-password postgrespw
+```
+
+### Network Hangs
+
+**Issue**: Network stops responding
+
+Solution:
+```bash
+# Check logs for errors
+iota start --force-regenesis 2>&1 | tee network.log
+
+# Restart with clean state
+iota start --force-regenesis
+
+# Check disk space
+df -h
+```
+
+## Best Practices
+
+### Development
+
+1. **Use ephemeral mode** for quick iterations:
+   ```bash
+   iota start --force-regenesis
+   ```
+
+2. **Enable faucet** for easy token access:
+   ```bash
+   iota start --force-regenesis --with-faucet
+   ```
+
+3. **Short epochs** for faster testing:
+   ```bash
+   iota start --force-regenesis --epoch-duration-ms 10000
+   ```
+
+4. **Save logs** for debugging:
+   ```bash
+   iota start --force-regenesis 2>&1 | tee network.log
+   ```
+
+### Testing
+
+1. **Use persistent mode** for upgrade testing:
+   ```bash
+   iota genesis --force --with-faucet
+   iota start
+   ```
+
+2. **Multi-validator** for consensus testing:
+   ```bash
+   iota start --force-regenesis --committee-size 4
+   ```
+
+3. **Enable indexer** for query testing:
+   ```bash
+   iota start --force-regenesis --with-indexer --with-graphql
+   ```
+
+### Production-like Setup
+
+1. **Realistic epochs**:
+   ```bash
+   iota start --force-regenesis --epoch-duration-ms 3600000
+   ```
+
+2. **Multiple validators**:
+   ```bash
+   iota start --force-regenesis --committee-size 10
+   ```
+
+3. **Full services**:
+   ```bash
+   iota start --force-regenesis \
+     --committee-size 4 \
+     --with-faucet \
+     --with-indexer \
+     --with-graphql
+   ```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Client Commands" icon="terminal" href="/cli/client-commands">
+    Interact with your local network
+  </Card>
+  <Card title="Move Commands" icon="code" href="/cli/move-commands">
+    Build and publish packages
+  </Card>
+  <Card title="Testing" icon="flask" href="/cli/testing">
+    Write and run tests
+  </Card>
+  <Card title="Genesis Commands" icon="star" href="/cli/genesis-commands">
+    Advanced network configuration
+  </Card>
+</CardGroup>

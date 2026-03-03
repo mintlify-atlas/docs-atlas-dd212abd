@@ -1,0 +1,576 @@
+---
+title: GraphQL Queries
+description: GraphQL query types and fields for reading blockchain data
+---
+
+GraphQL queries provide read access to blockchain data. The `Query` type is the main entry point for all read operations.
+
+## Root Query Fields
+
+The Query type provides these top-level fields:
+
+### chainIdentifier
+
+Returns the chain identifier for the chain that the server is tracking.
+
+```graphql
+{
+  chainIdentifier
+}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "chainIdentifier": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+  }
+}
+```
+
+### serviceConfig
+
+Returns the server's configuration including limits and version information.
+
+```graphql
+{
+  serviceConfig {
+    maxQueryDepth
+    maxQueryNodes
+    maxOutputNodes
+    maxPageSize
+    requestTimeoutMs
+  }
+}
+```
+
+### protocolConfig
+
+Query the protocol configuration for a specific version or the latest version.
+
+<ParamField path="protocolVersion" type="UInt53">
+  The protocol version to query. If omitted, returns the latest version.
+</ParamField>
+
+```graphql
+{
+  protocolConfig(protocolVersion: 50) {
+    protocolVersion
+    configs {
+      key
+      value
+    }
+    featureFlags {
+      key
+      value
+    }
+  }
+}
+```
+
+### epoch
+
+Query information about an epoch by its ID.
+
+<ParamField path="id" type="UInt53">
+  The epoch ID. If omitted, returns the latest epoch.
+</ParamField>
+
+```graphql
+{
+  epoch(id: 100) {
+    epochId
+    referenceGasPrice
+    startTimestamp
+    endTimestamp
+    totalCheckpoints
+    totalTransactions
+    totalGasFees
+  }
+}
+```
+
+## Object Queries
+
+### object
+
+Query a specific on-chain object by its address.
+
+<ParamField path="address" type="IotaAddress" required>
+  The address of the object to query
+</ParamField>
+
+<ParamField path="version" type="UInt53">
+  The version of the object. If omitted, returns the latest version.
+</ParamField>
+
+```graphql
+{
+  object(address: "0x5") {
+    address
+    version
+    digest
+    storageRebate
+    owner {
+      __typename
+      ... on AddressOwner {
+        owner {
+          address
+        }
+      }
+    }
+    previousTransactionBlock {
+      digest
+    }
+  }
+}
+```
+
+### objects
+
+Query multiple objects with filtering and pagination.
+
+<ParamField path="first" type="Int">
+  Number of items to fetch from the start
+</ParamField>
+
+<ParamField path="after" type="String">
+  Cursor for forward pagination
+</ParamField>
+
+<ParamField path="last" type="Int">
+  Number of items to fetch from the end
+</ParamField>
+
+<ParamField path="before" type="String">
+  Cursor for backward pagination
+</ParamField>
+
+<ParamField path="filter" type="ObjectFilter">
+  Filter criteria for objects
+  
+  <Expandable title="ObjectFilter">
+    <ParamField path="type" type="String">
+      Filter by object type (e.g., "0x2::coin::Coin")
+    </ParamField>
+    <ParamField path="owner" type="IotaAddress">
+      Filter by owner address
+    </ParamField>
+    <ParamField path="objectIds" type="[IotaAddress!]">
+      Filter by specific object IDs
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+```graphql
+{
+  objects(first: 10, filter: { type: "0x2::coin::Coin<0x2::iota::IOTA>" }) {
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    nodes {
+      address
+      version
+      digest
+    }
+  }
+}
+```
+
+## Address Queries
+
+### address
+
+Query an address and its associated data.
+
+<ParamField path="address" type="IotaAddress" required>
+  The address to query
+</ParamField>
+
+```graphql
+{
+  address(address: "0x479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747") {
+    address
+    balance {
+      coinType { repr }
+      coinObjectCount
+      totalBalance
+    }
+    coins(first: 5) {
+      nodes {
+        contents {
+          type { repr }
+        }
+      }
+    }
+  }
+}
+```
+
+## Transaction Queries
+
+### transactionBlock
+
+Query a specific transaction block by its digest.
+
+<ParamField path="digest" type="String" required>
+  The Base58-encoded transaction digest
+</ParamField>
+
+```graphql
+{
+  transactionBlock(digest: "Dv5XRBjWvZTwiHVrhUetvDTgxyM8xVMb6P8pCAZv51tq") {
+    sender {
+      address
+    }
+    gasInput {
+      gasSponsor { address }
+      gasPayment { nodes { address } }
+      gasPrice
+      gasBudget
+    }
+    kind {
+      __typename
+    }
+    signatures
+    digest
+    effects {
+      timestamp
+      status
+      gasEffects {
+        gasObject { address }
+        gasSummary {
+          computationCost
+          storageCost
+          storageRebate
+        }
+      }
+    }
+  }
+}
+```
+
+### transactionBlocks
+
+Query multiple transaction blocks with filtering and pagination.
+
+<ParamField path="first" type="Int">
+  Number of items to fetch from the start
+</ParamField>
+
+<ParamField path="after" type="String">
+  Cursor for forward pagination
+</ParamField>
+
+<ParamField path="last" type="Int">
+  Number of items to fetch from the end
+</ParamField>
+
+<ParamField path="before" type="String">
+  Cursor for backward pagination
+</ParamField>
+
+<ParamField path="filter" type="TransactionBlockFilter">
+  Filter criteria for transactions
+  
+  <Expandable title="TransactionBlockFilter">
+    <ParamField path="function" type="String">
+      Filter by Move function (format: "package::module::function")
+    </ParamField>
+    <ParamField path="kind" type="TransactionBlockKindInput">
+      Filter by transaction kind
+    </ParamField>
+    <ParamField path="afterCheckpoint" type="UInt53">
+      Include only transactions after this checkpoint
+    </ParamField>
+    <ParamField path="beforeCheckpoint" type="UInt53">
+      Include only transactions before this checkpoint
+    </ParamField>
+    <ParamField path="atCheckpoint" type="UInt53">
+      Include only transactions at this checkpoint
+    </ParamField>
+    <ParamField path="signAddress" type="IotaAddress">
+      Filter by signer address
+    </ParamField>
+    <ParamField path="recvAddress" type="IotaAddress">
+      Filter by recipient address
+    </ParamField>
+    <ParamField path="inputObject" type="IotaAddress">
+      Filter by input object
+    </ParamField>
+    <ParamField path="changedObject" type="IotaAddress">
+      Filter by changed object
+    </ParamField>
+    <ParamField path="transactionIds" type="[String!]">
+      Filter by specific transaction digests
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="scanLimit" type="Int">
+  Maximum number of transactions to scan (required for complex filters)
+</ParamField>
+
+```graphql
+{
+  transactionBlocks(
+    first: 10
+    filter: { signAddress: "0x479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747" }
+  ) {
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    nodes {
+      digest
+      sender { address }
+      effects {
+        timestamp
+        status
+      }
+    }
+  }
+}
+```
+
+## Checkpoint Queries
+
+### checkpoint
+
+Query a checkpoint by its sequence number or digest.
+
+<ParamField path="sequenceNumber" type="UInt53">
+  The checkpoint sequence number
+</ParamField>
+
+<ParamField path="digest" type="String">
+  The checkpoint digest (Base58-encoded)
+</ParamField>
+
+```graphql
+{
+  checkpoint(sequenceNumber: 1000) {
+    sequenceNumber
+    digest
+    timestamp
+    networkTotalTransactions
+    validatorSignatures
+    transactionBlocks(first: 5) {
+      nodes {
+        digest
+      }
+    }
+  }
+}
+```
+
+### checkpoints
+
+Query multiple checkpoints with pagination.
+
+<ParamField path="first" type="Int">
+  Number of checkpoints to fetch from the start
+</ParamField>
+
+<ParamField path="after" type="String">
+  Cursor for forward pagination
+</ParamField>
+
+<ParamField path="last" type="Int">
+  Number of checkpoints to fetch from the end
+</ParamField>
+
+<ParamField path="before" type="String">
+  Cursor for backward pagination
+</ParamField>
+
+```graphql
+{
+  checkpoints(first: 10) {
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    nodes {
+      sequenceNumber
+      timestamp
+      networkTotalTransactions
+    }
+  }
+}
+```
+
+## Coin Queries
+
+### coinMetadata
+
+Query metadata for a specific coin type.
+
+<ParamField path="coinType" type="String" required>
+  The coin type (e.g., "0x2::iota::IOTA")
+</ParamField>
+
+```graphql
+{
+  coinMetadata(coinType: "0x2::iota::IOTA") {
+    decimals
+    name
+    symbol
+    description
+    iconUrl
+    supply
+  }
+}
+```
+
+## Event Queries
+
+### events
+
+Query events with filtering and pagination.
+
+<ParamField path="first" type="Int">
+  Number of events to fetch
+</ParamField>
+
+<ParamField path="after" type="String">
+  Cursor for pagination
+</ParamField>
+
+<ParamField path="filter" type="EventFilter">
+  Filter criteria for events
+  
+  <Expandable title="EventFilter">
+    <ParamField path="sender" type="IotaAddress">
+      Filter by sender address
+    </ParamField>
+    <ParamField path="transactionDigest" type="String">
+      Filter by transaction digest
+    </ParamField>
+    <ParamField path="emittingPackage" type="IotaAddress">
+      Filter by emitting package
+    </ParamField>
+    <ParamField path="emittingModule" type="String">
+      Filter by emitting module
+    </ParamField>
+    <ParamField path="eventType" type="String">
+      Filter by event type
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+```graphql
+{
+  events(
+    first: 10
+    filter: { sender: "0x479c602460ae68771dcb9bfcef607dccc678859fb72d7d8aa8d9ce58c9430747" }
+  ) {
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    nodes {
+      sendingModule {
+        package { address }
+        name
+      }
+      type { repr }
+      sender { address }
+      timestamp
+      json
+      bcs
+    }
+  }
+}
+```
+
+## System Queries
+
+### iotaSystemStateV2
+
+Query the current IOTA system state.
+
+```graphql
+{
+  iotaSystemStateV2 {
+    epoch
+    protocolVersion
+    systemStateVersion
+    iotaTotalSupply
+    storageRebate
+    referenceGasPrice
+    activeValidators {
+      name
+      iotaAddress
+      stakingPoolId
+      votingPower
+    }
+  }
+}
+```
+
+### availableRange
+
+Query the range of checkpoints available on the server.
+
+```graphql
+{
+  availableRange {
+    first {
+      sequenceNumber
+      digest
+    }
+    last {
+      sequenceNumber
+      digest
+    }
+  }
+}
+```
+
+## Pagination Pattern
+
+All paginated queries follow this pattern:
+
+```graphql
+{
+  <query>(first: 10, after: "cursor") {
+    pageInfo {
+      hasNextPage
+      hasPreviousPage
+      startCursor
+      endCursor
+    }
+    edges {
+      cursor
+      node {
+        # ... fields
+      }
+    }
+    nodes {
+      # ... fields (shorthand for edges.node)
+    }
+  }
+}
+```
+
+## Type Introspection
+
+Query the schema itself:
+
+```graphql
+{
+  __schema {
+    queryType {
+      name
+      fields {
+        name
+        description
+        type { name }
+      }
+    }
+  }
+}
+```

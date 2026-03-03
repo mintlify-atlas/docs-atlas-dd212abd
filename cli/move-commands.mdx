@@ -1,0 +1,704 @@
+---
+title: "Move Commands"
+description: "Complete reference for building, testing, and managing Move packages with the IOTA CLI"
+---
+
+The `iota move` command provides tools for developing Move smart contracts on IOTA.
+
+## Basic Usage
+
+```bash
+iota move [OPTIONS] [SUBCOMMAND]
+```
+
+### Global Options
+
+- `--path <PATH>` or `-p <PATH>` - Path to the package directory (defaults to current directory)
+- `--client.config <PATH>` - Custom config file
+- `--client.env <ENV>` - Network environment to use
+
+### Build Configuration Options
+
+All Move commands support standard Move build options:
+
+- `--dev` - Compile in development mode
+- `--test` - Compile in test mode  
+- `--generate-docs` - Generate documentation
+- `--generate-abis` - Generate ABIs
+- `--install-dir <PATH>` - Installation directory for compiled packages
+- `--force` - Force recompilation
+- `--fetch-deps-only` - Only fetch dependencies
+- `--skip-fetch-latest-git-deps` - Skip fetching latest git dependencies
+
+## Commands
+
+### build
+
+Compile a Move package:
+
+```bash
+iota move build [OPTIONS]
+```
+
+#### Options
+
+- `--dump-bytecode-as-base64` - Output bytecode as base64 (requires network connection)
+- `--with-unpublished-dependencies` - Include unpublished dependencies
+- `--chain-id <ID>` - Build for specific chain
+- `--ignore-chain` - Ignore chain ID validation
+
+#### Examples
+
+<Steps>
+  <Step title="Basic build">
+    ```bash
+    cd my_package
+    iota move build
+    ```
+    
+    Output:
+    ```
+    INCLUDING DEPENDENCY Iota
+    INCLUDING DEPENDENCY MoveStdlib
+    BUILDING my_package
+    ```
+  </Step>
+
+  <Step title="Build with dependencies">
+    ```bash
+    iota move build --force
+    ```
+    
+    This forces rebuilding all dependencies.
+  </Step>
+
+  <Step title="Generate documentation">
+    ```bash
+    iota move build --generate-docs
+    ```
+    
+    Documentation is generated in `build/my_package/docs/`.
+  </Step>
+
+  <Step title="Build for publishing">
+    ```bash
+    iota move build --dump-bytecode-as-base64
+    ```
+    
+    This prepares the package for publishing by:
+    - Resolving on-chain addresses from Move.lock
+    - Performing tree-shaking optimization
+    - Outputting base64-encoded bytecode
+  </Step>
+</Steps>
+
+#### Build Artifacts
+
+Successful builds create:
+
+```
+my_package/
+├── Move.toml
+├── sources/
+└── build/
+    ├── my_package/
+    │   ├── bytecode_modules/       # Compiled bytecode
+    │   ├── source_maps/            # Debug info
+    │   ├── sources/                # Processed source
+    │   └── docs/                   # Generated docs
+    └── BuildInfo.yaml          # Build metadata
+```
+
+### test
+
+Run Move unit tests:
+
+```bash
+iota move test [OPTIONS] [FILTER]
+```
+
+#### Options
+
+- `<FILTER>` - Filter tests by name (regex pattern)
+- `--num-threads <N>` - Number of threads for parallel execution
+- `--gas-limit <AMOUNT>` - Gas limit per test
+- `--list` - List tests without running
+- `--coverage` - Collect coverage information
+
+#### Examples
+
+<Steps>
+  <Step title="Run all tests">
+    ```bash
+    iota move test
+    ```
+    
+    Output:
+    ```
+    INCLUDING DEPENDENCY Iota
+    INCLUDING DEPENDENCY MoveStdlib
+    BUILDING my_package
+    Running Move unit tests
+    [ PASS    ] 0x0::my_module::test_transfer
+    [ PASS    ] 0x0::my_module::test_balance
+    Test result: OK. Total tests: 2; passed: 2; failed: 0
+    ```
+  </Step>
+
+  <Step title="Run specific tests">
+    ```bash
+    # Run tests matching pattern
+    iota move test "test_transfer"
+    
+    # Run all tests in a module
+    iota move test "my_module::"
+    ```
+  </Step>
+
+  <Step title="List available tests">
+    ```bash
+    iota move test --list
+    ```
+  </Step>
+
+  <Step title="Parallel testing">
+    ```bash
+    iota move test --num-threads 4
+    ```
+  </Step>
+</Steps>
+
+#### Test Output
+
+Tests can have several outcomes:
+
+- `[ PASS    ]` - Test passed
+- `[ FAIL    ]` - Test failed with assertion error
+- `[ TIMEOUT ]` - Test exceeded gas limit
+- `[ ERROR   ]` - Test encountered execution error
+
+### new
+
+Create a new Move package:
+
+```bash
+iota move new <NAME>
+```
+
+#### Example
+
+```bash
+iota move new my_package
+```
+
+This creates:
+
+```
+my_package/
+├── Move.toml
+└── sources/
+    └── my_package.move
+```
+
+#### Move.toml
+
+```toml
+[package]
+name = "my_package"
+version = "0.0.1"
+edition = "2024.beta"
+
+[dependencies]
+Iota = { git = "https://github.com/iotaledger/iota.git", subdir = "crates/iota-framework/packages/iota-framework", rev = "framework/mainnet" }
+
+[addresses]
+my_package = "0x0"
+```
+
+### coverage
+
+Generate code coverage reports:
+
+```bash
+iota move coverage [OPTIONS]
+```
+
+#### Options
+
+- `--module <NAME>` - Module to analyze
+- `--summary` - Show summary statistics
+- `--output-csv <PATH>` - Export to CSV
+
+#### Example
+
+<Steps>
+  <Step title="Run tests with coverage">
+    ```bash
+    iota move test --coverage
+    ```
+  </Step>
+
+  <Step title="View coverage report">
+    ```bash
+    iota move coverage --summary
+    ```
+    
+    Output:
+    ```
+    Module 0x0::my_module
+    ├── % covered: 87.5
+    ├── uncovered locations:
+    │   ├── my_module.move:42
+    │   └── my_module.move:58
+    ```
+  </Step>
+
+  <Step title="Export coverage">
+    ```bash
+    iota move coverage --output-csv coverage.csv
+    ```
+  </Step>
+</Steps>
+
+### disassemble
+
+Disassemble compiled bytecode:
+
+```bash
+iota move disassemble [OPTIONS]
+```
+
+#### Options
+
+- `--package <NAME>` - Package name
+- `--module <NAME>` - Module to disassemble
+
+#### Example
+
+```bash
+iota move disassemble --module my_module
+```
+
+Output:
+```
+// Move bytecode v6
+module 0.my_module {
+
+struct Coin {
+    value: u64
+}
+
+public transfer(Arg0: Coin, Arg1: address) {
+L0:
+    0: MoveLoc[0](Arg1: address)
+    1: MoveLoc[1](Arg0: Coin)
+    2: TransferObjects([1], 0)
+    3: Ret
+}
+
+}
+```
+
+### manage-package
+
+Manage package configurations and dependencies:
+
+```bash
+iota move manage-package [OPTIONS] [SUBCOMMAND]
+```
+
+#### Subcommands
+
+- `add` - Add a dependency
+- `remove` - Remove a dependency  
+- `upgrade` - Upgrade dependencies
+
+#### Examples
+
+```bash
+# Add dependency
+iota move manage-package add \
+  --name SomePackage \
+  --git https://github.com/org/package \
+  --rev main
+
+# Remove dependency
+iota move manage-package remove --name SomePackage
+
+# Upgrade all dependencies
+iota move manage-package upgrade
+```
+
+### migrate
+
+Migrate packages between protocol versions:
+
+```bash
+iota move migrate [OPTIONS]
+```
+
+## Publishing Packages
+
+Publish a Move package to the network:
+
+```bash
+iota client publish [OPTIONS] [PACKAGE_PATH]
+```
+
+### Options
+
+- `--skip-dependency-verification` - Skip verifying dependencies
+- `--with-unpublished-dependencies` - Publish transitive dependencies
+- `--gas <ID>...` - Gas payment coins
+- `--gas-budget <AMOUNT>` - Gas budget
+
+### Examples
+
+<Steps>
+  <Step title="Basic publish">
+    ```bash
+    cd my_package
+    iota client publish --gas-budget 100000000
+    ```
+    
+    Output:
+    ```
+    INCLUDING DEPENDENCY Iota
+    INCLUDING DEPENDENCY MoveStdlib
+    BUILDING my_package
+    Successfully verified dependencies on-chain against source.
+    Transaction Digest: 5KzKVq7qP2xH8FwkQJqxhPNBjkFVjM3xZoJpP5KwqAkH
+    ╭───────────────────────────────────────────────────────────╮
+    │ Object Changes                                              │
+    ├───────────────────────────────────────────────────────────┤
+    │ Created Objects:                                            │
+    │  ├─ ID: 0xabc...123                                        │
+    │  │  Owner: Immutable                                        │
+    │  │  Type: 0x2::package::UpgradeCap                         │
+    │  ├─ ID: 0xdef...456                                        │
+    │     Owner: Account(0x789...)                                │
+    │     Type: 0x2::package::Package                             │
+    ╰───────────────────────────────────────────────────────────╯
+    ```
+    
+    <Note>
+      Save the Package ID and UpgradeCap ID for future upgrades.
+    </Note>
+  </Step>
+
+  <Step title="Publish with unpublished dependencies">
+    ```bash
+    iota client publish \
+      --with-unpublished-dependencies \
+      --gas-budget 200000000
+    ```
+    
+    This publishes any dependencies that haven't been published yet.
+  </Step>
+
+  <Step title="Skip dependency verification">
+    ```bash
+    iota client publish \
+      --skip-dependency-verification \
+      --gas-budget 100000000
+    ```
+    
+    <Warning>
+      Only use this during development. Production packages should always verify dependencies.
+    </Warning>
+  </Step>
+</Steps>
+
+## Upgrading Packages
+
+Upgrade a published package:
+
+```bash
+iota client upgrade [OPTIONS] [PACKAGE_PATH]
+```
+
+### Options
+
+- `--upgrade-capability <ID>` - UpgradeCap object ID (required)
+- `--verify-compatibility` - Check upgrade compatibility
+- `--skip-dependency-verification` - Skip verifying dependencies
+- `--with-unpublished-dependencies` - Upgrade transitive dependencies
+- `--gas <ID>...` - Gas payment
+- `--gas-budget <AMOUNT>` - Gas budget
+
+### Example
+
+<Steps>
+  <Step title="Modify your package">
+    Make changes to your Move code in `sources/`.
+  </Step>
+
+  <Step title="Test changes">
+    ```bash
+    iota move test
+    ```
+  </Step>
+
+  <Step title="Upgrade the package">
+    ```bash
+    iota client upgrade \
+      --upgrade-capability 0xabc...123 \
+      --verify-compatibility \
+      --gas-budget 100000000
+    ```
+    
+    Output:
+    ```
+    INCLUDING DEPENDENCY Iota
+    INCLUDING DEPENDENCY MoveStdlib
+    BUILDING my_package
+    Successfully verified dependencies on-chain against source.
+    Compatibility verification passed!
+    Transaction Digest: 7NpQvR8sT3yK9LqDpM4jVfXhZcBwNrYkWxGsHcKqPaJm
+    ```
+  </Step>
+</Steps>
+
+### Upgrade Compatibility
+
+The `--verify-compatibility` flag checks:
+
+- No public function signatures changed
+- No struct fields removed or reordered
+- No resource storage layout changes
+- All new code follows upgrade rules
+
+## Dependency Management
+
+### Move.toml Configuration
+
+Dependencies are declared in `Move.toml`:
+
+```toml
+[dependencies]
+# IOTA framework (required)
+Iota = { 
+    git = "https://github.com/iotaledger/iota.git", 
+    subdir = "crates/iota-framework/packages/iota-framework", 
+    rev = "framework/mainnet" 
+}
+
+# Local dependency
+MyLibrary = { local = "../my_library" }
+
+# Git dependency with specific revision
+SomePackage = { 
+    git = "https://github.com/org/package",
+    rev = "v1.0.0"
+}
+
+# Published on-chain dependency
+PublishedPackage = { 
+    address = "0x1234567890abcdef" 
+}
+```
+
+### Move.lock File
+
+The `Move.lock` file tracks resolved dependencies:
+
+```toml
+[move]
+version = 2
+manifest_digest = "..."
+deps_digest = "..."
+
+[[move.package]]
+name = "Iota"
+source = { git = "...", rev = "...", subdir = "..." }
+
+[[move.package]]
+name = "MoveStdlib"  
+source = { git = "...", rev = "...", subdir = "..." }
+```
+
+<Note>
+  Commit `Move.lock` to version control for reproducible builds.
+</Note>
+
+## Source Verification
+
+Verify on-chain packages match local source:
+
+```bash
+iota client verify-source [OPTIONS] [PACKAGE_PATH]
+```
+
+### Options
+
+- `--verify-deps` - Also verify dependencies
+- `--skip-source` - Only verify dependencies
+- `--address-override <ADDRESS>` - Override package address
+
+### Example
+
+```bash
+iota client verify-source . --verify-deps
+```
+
+Output:
+```
+Successfully verified source against on-chain bytecode
+Dependencies verified:
+  - Iota: OK
+  - MoveStdlib: OK
+```
+
+## Best Practices
+
+### Development Workflow
+
+<Steps>
+  <Step title="Create package">
+    ```bash
+    iota move new my_package
+    cd my_package
+    ```
+  </Step>
+
+  <Step title="Write code and tests">
+    Add your Move code in `sources/` and tests with `#[test]` annotations.
+  </Step>
+
+  <Step title="Build and test">
+    ```bash
+    iota move build
+    iota move test
+    ```
+  </Step>
+
+  <Step title="Test on local network">
+    ```bash
+    # Start local network
+    iota start --force-regenesis
+    
+    # In another terminal, publish
+    iota client publish --gas-budget 100000000
+    ```
+  </Step>
+
+  <Step title="Verify and publish to testnet">
+    ```bash
+    # Switch to testnet
+    iota client switch --env testnet
+    
+    # Get test tokens
+    iota client faucet
+    
+    # Publish
+    iota client publish --gas-budget 100000000
+    ```
+  </Step>
+</Steps>
+
+### Testing Tips
+
+1. **Write comprehensive tests**:
+   ```move
+   #[test]
+   fun test_transfer() {
+       // Test normal case
+   }
+   
+   #[test]
+   #[expected_failure(abort_code = EInsufficientBalance)]
+   fun test_transfer_insufficient_balance() {
+       // Test error case
+   }
+   ```
+
+2. **Use test-only functions**:
+   ```move
+   #[test_only]
+   public fun create_for_testing(ctx: &mut TxContext): MyObject {
+       // Test helper
+   }
+   ```
+
+3. **Test with realistic gas limits**:
+   ```bash
+   iota move test --gas-limit 100000000
+   ```
+
+### Security Checklist
+
+- [ ] All tests pass
+- [ ] Dependencies verified on-chain
+- [ ] No unsafe code patterns
+- [ ] Access controls implemented
+- [ ] Input validation performed
+- [ ] Upgrade compatibility checked
+- [ ] Code reviewed
+- [ ] Deployed to testnet first
+
+## Troubleshooting
+
+### Build Errors
+
+**Error**: `Failed to resolve dependencies`
+
+```bash
+# Clear build cache
+rm -rf build/
+
+# Rebuild
+iota move build
+```
+
+**Error**: `Address resolution failed`
+
+Check that `Move.toml` has correct address mappings:
+```toml
+[addresses]
+my_package = "0x0"  # Use 0x0 for unpublished packages
+```
+
+### Test Failures
+
+**Error**: `Test exceeded gas limit`
+
+Increase gas limit:
+```bash
+iota move test --gas-limit 200000000
+```
+
+**Error**: `Module not found`
+
+Ensure dependencies are built:
+```bash
+iota move build
+iota move test
+```
+
+### Publishing Issues
+
+**Error**: `Dependency verification failed`
+
+Dependencies must be published to the same network:
+```bash
+# Publish dependencies first, or use:
+iota client publish --with-unpublished-dependencies
+```
+
+**Error**: `Insufficient gas`
+
+Increase gas budget:
+```bash
+iota client publish --gas-budget 200000000
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Testing Guide" icon="flask" href="/cli/testing">
+    Learn advanced testing techniques
+  </Card>
+  <Card title="Transaction Builder" icon="block-brick" href="/cli/transaction-builder">
+    Build complex transactions with PTB
+  </Card>
+</CardGroup>

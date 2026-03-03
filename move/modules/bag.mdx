@@ -1,0 +1,532 @@
+---
+title: Bag Module
+description: Heterogeneous map-like collection for storing different value types in IOTA Move
+---
+
+# Bag Module
+
+The `iota::bag` module provides a heterogeneous map-like collection that can store values of different types. Unlike `Table`, a `Bag` doesn't constrain all values to a single type.
+
+Source: `crates/iota-framework/packages/iota-framework/sources/bag.move`
+
+## Core Type
+
+### Bag
+
+```move
+public struct Bag has key, store {
+    id: UID,
+    size: u64,
+}
+```
+
+Key properties:
+- Can store values of different types
+- Keys must have `copy + drop + store` abilities
+- Values must have `store` ability
+- Has `key + store` abilities itself
+- Prevents accidentally stranding field values
+
+## Creating Bags
+
+### new
+
+Create a new empty bag:
+
+<ParamField path="ctx" type="&mut TxContext" required>
+  Transaction context
+</ParamField>
+
+```move
+public fun new(ctx: &mut TxContext): Bag
+```
+
+Example:
+```move
+use iota::bag::{Self, Bag};
+
+public struct Inventory has key {
+    id: UID,
+    items: Bag,
+}
+
+public fun create_inventory(ctx: &mut TxContext) {
+    let inventory = Inventory {
+        id: object::new(ctx),
+        items: bag::new(ctx),
+    };
+    transfer::transfer(inventory, ctx.sender());
+}
+```
+
+## Bag Operations
+
+### add
+
+Add a key-value pair to the bag:
+
+<ParamField path="bag" type="&mut Bag" required>
+  Mutable reference to the bag
+</ParamField>
+
+<ParamField path="k" type="K" required>
+  Key to add (must have copy + drop + store)
+</ParamField>
+
+<ParamField path="v" type="V" required>
+  Value to add (must have store)
+</ParamField>
+
+```move
+public fun add<K: copy + drop + store, V: store>(bag: &mut Bag, k: K, v: V)
+```
+
+Aborts with `EFieldAlreadyExists` if the key already exists.
+
+Example:
+```move
+public struct Sword has store { damage: u64 }
+public struct Potion has store { healing: u64 }
+public struct Gold has store { amount: u64 }
+
+public fun add_sword(inventory: &mut Inventory) {
+    let sword = Sword { damage: 50 };
+    bag::add(&mut inventory.items, b"sword", sword);
+}
+
+public fun add_potion(inventory: &mut Inventory) {
+    let potion = Potion { healing: 25 };
+    bag::add(&mut inventory.items, b"potion", potion);
+}
+
+public fun add_gold(inventory: &mut Inventory, amount: u64) {
+    let gold = Gold { amount };
+    bag::add(&mut inventory.items, b"gold", gold);
+}
+```
+
+### borrow
+
+Immutably borrow a value from the bag:
+
+<ParamField path="bag" type="&Bag" required>
+  Reference to the bag
+</ParamField>
+
+<ParamField path="k" type="K" required>
+  Key to look up
+</ParamField>
+
+```move
+#[syntax(index)]
+public fun borrow<K: copy + drop + store, V: store>(bag: &Bag, k: K): &V
+```
+
+Aborts with:
+- `EFieldDoesNotExist` if the key doesn't exist
+- `EFieldTypeMismatch` if the value has a different type
+
+Example:
+```move
+public fun get_sword_damage(inventory: &Inventory): u64 {
+    let sword = bag::borrow<vector<u8>, Sword>(&inventory.items, b"sword");
+    sword.damage
+}
+
+public fun get_gold_amount(inventory: &Inventory): u64 {
+    let gold = bag::borrow<vector<u8>, Gold>(&inventory.items, b"gold");
+    gold.amount
+}
+```
+
+### borrow_mut
+
+Mutably borrow a value from the bag:
+
+<ParamField path="bag" type="&mut Bag" required>
+  Mutable reference to the bag
+</ParamField>
+
+<ParamField path="k" type="K" required>
+  Key to look up
+</ParamField>
+
+```move
+#[syntax(index)]
+public fun borrow_mut<K: copy + drop + store, V: store>(bag: &mut Bag, k: K): &mut V
+```
+
+Example:
+```move
+public fun upgrade_sword(inventory: &mut Inventory, bonus: u64) {
+    let sword = bag::borrow_mut<vector<u8>, Sword>(&mut inventory.items, b"sword");
+    sword.damage = sword.damage + bonus;
+}
+
+public fun use_potion(inventory: &mut Inventory, amount: u64) {
+    let potion = bag::borrow_mut<vector<u8>, Potion>(&mut inventory.items, b"potion");
+    potion.healing = potion.healing - amount;
+}
+```
+
+### remove
+
+Remove a key-value pair and return the value:
+
+<ParamField path="bag" type="&mut Bag" required>
+  Mutable reference to the bag
+</ParamField>
+
+<ParamField path="k" type="K" required>
+  Key to remove
+</ParamField>
+
+```move
+public fun remove<K: copy + drop + store, V: store>(bag: &mut Bag, k: K): V
+```
+
+Example:
+```move
+public fun consume_potion(inventory: &mut Inventory): u64 {
+    let Potion { healing } = bag::remove<vector<u8>, Potion>(
+        &mut inventory.items,
+        b"potion"
+    );
+    healing
+}
+```
+
+### contains
+
+Check if a key exists (without specifying value type):
+
+<ParamField path="bag" type="&Bag" required>
+  Reference to the bag
+</ParamField>
+
+<ParamField path="k" type="K" required>
+  Key to check
+</ParamField>
+
+```move
+public fun contains<K: copy + drop + store>(bag: &Bag, k: K): bool
+```
+
+Example:
+```move
+public fun has_sword(inventory: &Inventory): bool {
+    bag::contains(&inventory.items, b"sword")
+}
+```
+
+### contains_with_type
+
+Check if a key exists with a specific value type:
+
+<ParamField path="bag" type="&Bag" required>
+  Reference to the bag
+</ParamField>
+
+<ParamField path="k" type="K" required>
+  Key to check
+</ParamField>
+
+```move
+public fun contains_with_type<K: copy + drop + store, V: store>(bag: &Bag, k: K): bool
+```
+
+Example:
+```move
+public fun has_sword_typed(inventory: &Inventory): bool {
+    bag::contains_with_type<vector<u8>, Sword>(&inventory.items, b"sword")
+}
+```
+
+### length
+
+Get the number of entries in the bag:
+
+<ParamField path="bag" type="&Bag" required>
+  Reference to the bag
+</ParamField>
+
+```move
+public fun length(bag: &Bag): u64
+```
+
+Example:
+```move
+public fun item_count(inventory: &Inventory): u64 {
+    bag::length(&inventory.items)
+}
+```
+
+### is_empty
+
+Check if the bag is empty:
+
+<ParamField path="bag" type="&Bag" required>
+  Reference to the bag
+</ParamField>
+
+```move
+public fun is_empty(bag: &Bag): bool
+```
+
+## Destroying Bags
+
+### destroy_empty
+
+Destroy an empty bag:
+
+<ParamField path="bag" type="Bag" required>
+  Bag to destroy (must be empty)
+</ParamField>
+
+```move
+public fun destroy_empty(bag: Bag)
+```
+
+Aborts with `EBagNotEmpty` if the bag still contains entries.
+
+Example:
+```move
+public fun cleanup_inventory(inventory: Inventory) {
+    let Inventory { id, items } = inventory;
+    bag::destroy_empty(items);
+    object::delete(id);
+}
+```
+
+## Complete Example: Game Inventory System
+
+```move
+module example::game_inventory {
+    use iota::bag::{Self, Bag};
+    use iota::object::{Self, UID};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    // Different item types
+    public struct Weapon has store {
+        name: vector<u8>,
+        damage: u64,
+        durability: u64,
+    }
+
+    public struct Armor has store {
+        name: vector<u8>,
+        defense: u64,
+        durability: u64,
+    }
+
+    public struct Consumable has store {
+        name: vector<u8>,
+        effect: vector<u8>,
+        quantity: u64,
+    }
+
+    public struct Currency has store {
+        gold: u64,
+        gems: u64,
+    }
+
+    public struct PlayerInventory has key {
+        id: UID,
+        items: Bag,
+        capacity: u64,
+    }
+
+    const EInventoryFull: u64 = 0;
+    const EItemNotFound: u64 = 1;
+
+    // Item slot keys
+    const WEAPON_SLOT: vector<u8> = b"weapon";
+    const ARMOR_SLOT: vector<u8> = b"armor";
+    const POTION_SLOT: vector<u8> = b"potion";
+    const CURRENCY_SLOT: vector<u8> = b"currency";
+
+    public fun create_inventory(capacity: u64, ctx: &mut TxContext) {
+        let mut inventory = PlayerInventory {
+            id: object::new(ctx),
+            items: bag::new(ctx),
+            capacity,
+        };
+        
+        // Initialize with empty currency
+        bag::add(&mut inventory.items, CURRENCY_SLOT, Currency {
+            gold: 0,
+            gems: 0,
+        });
+        
+        transfer::transfer(inventory, ctx.sender());
+    }
+
+    public fun equip_weapon(
+        inventory: &mut PlayerInventory,
+        weapon: Weapon,
+    ) {
+        if (bag::contains(&inventory.items, WEAPON_SLOT)) {
+            // Remove old weapon
+            let old_weapon: Weapon = bag::remove(&mut inventory.items, WEAPON_SLOT);
+            // Could return to storage here
+            let Weapon { name: _, damage: _, durability: _ } = old_weapon;
+        };
+        
+        bag::add(&mut inventory.items, WEAPON_SLOT, weapon);
+    }
+
+    public fun equip_armor(
+        inventory: &mut PlayerInventory,
+        armor: Armor,
+    ) {
+        if (bag::contains(&inventory.items, ARMOR_SLOT)) {
+            let old_armor: Armor = bag::remove(&mut inventory.items, ARMOR_SLOT);
+            let Armor { name: _, defense: _, durability: _ } = old_armor;
+        };
+        
+        bag::add(&mut inventory.items, ARMOR_SLOT, armor);
+    }
+
+    public fun add_consumable(
+        inventory: &mut PlayerInventory,
+        consumable: Consumable,
+    ) {
+        if (bag::contains_with_type<vector<u8>, Consumable>(&inventory.items, POTION_SLOT)) {
+            // Merge with existing
+            let existing = bag::borrow_mut<vector<u8>, Consumable>(
+                &mut inventory.items,
+                POTION_SLOT
+            );
+            existing.quantity = existing.quantity + consumable.quantity;
+            let Consumable { name: _, effect: _, quantity: _ } = consumable;
+        } else {
+            bag::add(&mut inventory.items, POTION_SLOT, consumable);
+        }
+    }
+
+    public fun add_gold(inventory: &mut PlayerInventory, amount: u64) {
+        let currency = bag::borrow_mut<vector<u8>, Currency>(
+            &mut inventory.items,
+            CURRENCY_SLOT
+        );
+        currency.gold = currency.gold + amount;
+    }
+
+    public fun spend_gold(inventory: &mut PlayerInventory, amount: u64) {
+        let currency = bag::borrow_mut<vector<u8>, Currency>(
+            &mut inventory.items,
+            CURRENCY_SLOT
+        );
+        assert!(currency.gold >= amount, EItemNotFound);
+        currency.gold = currency.gold - amount;
+    }
+
+    public fun get_weapon_damage(inventory: &PlayerInventory): u64 {
+        if (bag::contains_with_type<vector<u8>, Weapon>(&inventory.items, WEAPON_SLOT)) {
+            let weapon = bag::borrow<vector<u8>, Weapon>(&inventory.items, WEAPON_SLOT);
+            weapon.damage
+        } else {
+            0  // No weapon equipped
+        }
+    }
+
+    public fun get_armor_defense(inventory: &PlayerInventory): u64 {
+        if (bag::contains_with_type<vector<u8>, Armor>(&inventory.items, ARMOR_SLOT)) {
+            let armor = bag::borrow<vector<u8>, Armor>(&inventory.items, ARMOR_SLOT);
+            armor.defense
+        } else {
+            0  // No armor equipped
+        }
+    }
+
+    public fun get_gold(inventory: &PlayerInventory): u64 {
+        let currency = bag::borrow<vector<u8>, Currency>(&inventory.items, CURRENCY_SLOT);
+        currency.gold
+    }
+
+    public fun use_consumable(inventory: &mut PlayerInventory): vector<u8> {
+        assert!(
+            bag::contains_with_type<vector<u8>, Consumable>(&inventory.items, POTION_SLOT),
+            EItemNotFound
+        );
+        
+        let consumable = bag::borrow_mut<vector<u8>, Consumable>(
+            &mut inventory.items,
+            POTION_SLOT
+        );
+        
+        assert!(consumable.quantity > 0, EItemNotFound);
+        consumable.quantity = consumable.quantity - 1;
+        
+        let effect = consumable.effect;
+        
+        if (consumable.quantity == 0) {
+            let Consumable { name: _, effect: _, quantity: _ } = 
+                bag::remove(&mut inventory.items, POTION_SLOT);
+        };
+        
+        effect
+    }
+}
+```
+
+## Error Codes
+
+```move
+const EBagNotEmpty: u64 = 0;  // Attempted to destroy a non-empty bag
+```
+
+The module also uses error codes from `dynamic_field`:
+- `EFieldAlreadyExists` - Key already exists in the bag
+- `EFieldDoesNotExist` - Key not found in the bag  
+- `EFieldTypeMismatch` - Value type doesn't match
+
+## Bag Identity
+
+Like `Table`, each `Bag` has a unique identity:
+
+```move
+let bag1 = bag::new(ctx);
+let bag2 = bag::new(ctx);
+bag::add(&mut bag1, 0, false);
+bag::add(&mut bag2, 0, false);
+
+assert!(&bag1 != &bag2);  // Different bags even with same contents
+```
+
+## Best Practices
+
+1. **Always specify types when accessing**: Bag requires explicit type parameters
+```move
+let value = bag::borrow<KeyType, ValueType>(&bag, key);
+```
+
+2. **Use `contains_with_type` for type safety**: Check both existence and type
+```move
+if (bag::contains_with_type<K, V>(&bag, key)) {
+    let value = bag::borrow<K, V>(&bag, key);
+}
+```
+
+3. **Document expected types**: Comment what types are stored at each key
+```move
+// Keys:
+// b"weapon" -> Weapon
+// b"armor" -> Armor
+// b"gold" -> u64
+```
+
+4. **Clean up before destroying**: Remove all entries before `destroy_empty`
+
+5. **Use constants for keys**: Define key constants to avoid typos
+
+## Comparison with Table
+
+| Feature | Bag | Table |
+|---------|-----|-------|
+| Value types | Heterogeneous | Homogeneous |
+| Type safety | Runtime | Compile-time |
+| Flexibility | High | Lower |
+| Use case | Mixed item types | Single item type |
+| Type specification | Required on access | Inferred from struct |

@@ -1,0 +1,754 @@
+---
+title: "Client Commands"
+description: "Complete reference for IOTA client commands to interact with the network, query objects, and execute transactions"
+---
+
+The `iota client` command provides all functionality for interacting with the IOTA network.
+
+## Basic Usage
+
+```bash
+iota client [OPTIONS] [SUBCOMMAND]
+```
+
+### Global Options
+
+- `--client.config <PATH>` - Custom config file path
+- `--client.env <ENV>` - Network environment to use
+- `--json` - Output results in JSON format
+- `--yes` - Accept defaults without prompting
+
+## Address Management
+
+### active-address
+
+Display the active address:
+
+```bash
+iota client active-address
+```
+
+Output:
+```
+0x1234567890abcdef1234567890abcdef12345678
+```
+
+### addresses
+
+List all addresses in keystore:
+
+```bash
+iota client addresses [--sort-by-alias]
+```
+
+Options:
+- `-s, --sort-by-alias` - Sort by alias instead of address
+
+Output:
+```
+╭────────────────────────────────────────────────────────────────────╮
+│ Active Address                                                     │
+│ 0x1234...5678                                                      │
+├────────┬────────────────────────────────────────────┬──────────────┤
+│ Alias  │ Address                                    │ Source       │
+├────────┼────────────────────────────────────────────┼──────────────┤
+│ alice  │ 0x1234...5678                              │ keypair      │
+│ bob    │ 0xabcd...ef01                              │ keypair      │
+╰────────┴────────────────────────────────────────────┴──────────────╯
+```
+
+### new-address
+
+Generate a new address:
+
+```bash
+iota client new-address [OPTIONS] <KEY_SCHEME>
+```
+
+Arguments:
+- `<KEY_SCHEME>` - Signature scheme: `ed25519`, `secp256k1`, or `secp256r1`
+
+Options:
+- `--alias <ALIAS>` - Set an alias for the address
+- `--word-length <LENGTH>` - Mnemonic length: `word12`, `word15`, `word18`, `word21`, `word24`
+- `--derivation-path <PATH>` - Custom derivation path
+
+Example:
+```bash
+iota client new-address ed25519 --alias my-wallet
+```
+
+Output:
+```
+Created new keypair for address with scheme ED25519
+Secret Recovery Phrase: [word1 word2 ... word12]
+Address: 0x1234567890abcdef1234567890abcdef12345678
+```
+
+<Warning>
+  Save your secret recovery phrase securely. It cannot be recovered if lost.
+</Warning>
+
+### add-account
+
+Add an existing account address (not backed by a private key):
+
+```bash
+iota client add-account <ADDRESS> [--alias <ALIAS>]
+```
+
+This is useful for monitoring accounts you don't control.
+
+### remove-address
+
+Remove an address from keystore:
+
+```bash
+iota client remove-address <ADDRESS_OR_ALIAS>
+```
+
+<Warning>
+  This permanently removes the private key. Ensure you have a backup.
+</Warning>
+
+### switch
+
+Switch active address or environment:
+
+```bash
+iota client switch [--address <ADDRESS>] [--env <ENV>]
+```
+
+Examples:
+```bash
+# Switch active address
+iota client switch --address alice
+
+# Switch network
+iota client switch --env testnet
+
+# Switch both
+iota client switch --address alice --env devnet
+```
+
+## Environment Management
+
+### active-env
+
+Display the active environment:
+
+```bash
+iota client active-env
+```
+
+### envs
+
+List all configured environments:
+
+```bash
+iota client envs
+```
+
+Output:
+```
+╭─────────┬────────────────────────────────────╮
+│ Alias   │ RPC URL                            │
+├─────────┼────────────────────────────────────┤
+│ devnet  │ https://api.devnet.iota.cafe:443   │
+│ testnet │ https://api.testnet.iota.cafe:443  │
+│ localnet│ http://127.0.0.1:9000              │
+╰─────────┴────────────────────────────────────╯
+```
+
+### new-env
+
+Add a new environment:
+
+```bash
+iota client new-env [OPTIONS] --alias <ALIAS> --rpc <URL>
+```
+
+Options:
+- `--alias <ALIAS>` - Environment name
+- `--rpc <URL>` - RPC endpoint URL
+- `--ws <URL>` - WebSocket URL (optional)
+- `--graphql <URL>` - GraphQL endpoint (optional)
+- `--faucet <URL>` - Faucet URL (optional)
+- `--basic-auth <USER:PASS>` - HTTP basic auth (optional)
+
+Example:
+```bash
+iota client new-env \
+  --alias custom \
+  --rpc https://rpc.example.com \
+  --ws wss://ws.example.com
+```
+
+## Querying Data
+
+### balance
+
+Check coin balance:
+
+```bash
+iota client balance [ADDRESS] [OPTIONS]
+```
+
+Options:
+- `--coin-type <TYPE>` - Filter by coin type (e.g., `0x2::iota::IOTA`)
+- `--with-coins` - Show individual coin objects
+
+Examples:
+```bash
+# Check active address balance
+iota client balance
+
+# Check specific address
+iota client balance 0x1234...
+
+# Check with coin details
+iota client balance --with-coins
+```
+
+Output:
+```
+╭─────────────────────────────────────────────────────────────╮
+│ Balance                                                     │
+├─────────────────────────────┬───────────────────────────────┤
+│ Coin                        │ Balance                       │
+├─────────────────────────────┼───────────────────────────────┤
+│ 0x2::iota::IOTA             │ 1000000000000 (1,000 IOTA)    │
+╰─────────────────────────────┴───────────────────────────────╯
+```
+
+### gas
+
+List gas objects:
+
+```bash
+iota client gas [ADDRESS]
+```
+
+Output:
+```
+╭───────────────────────────────┬──────────┬──────────────────╮
+│ Object ID                     │ Version  │ Balance (NANO)   │
+├───────────────────────────────┼──────────┼──────────────────┤
+│ 0xabc...123                   │ 5        │ 500000000000     │
+│ 0xdef...456                   │ 3        │ 500000000000     │
+╰───────────────────────────────┴──────────┴──────────────────╯
+```
+
+### object
+
+Fetch object details:
+
+```bash
+iota client object <OBJECT_ID> [--bcs]
+```
+
+Options:
+- `--bcs` - Output BCS-serialized object
+
+Example:
+```bash
+iota client object 0xabc123...
+```
+
+### objects
+
+List all objects owned by an address:
+
+```bash
+iota client objects [ADDRESS]
+```
+
+Example:
+```bash
+iota client objects
+iota client objects 0x1234...
+```
+
+### dynamic-field
+
+Query dynamic fields of an object:
+
+```bash
+iota client dynamic-field <OBJECT_ID> [OPTIONS]
+```
+
+Options:
+- `--cursor <ID>` - Pagination cursor
+- `--limit <NUM>` - Max items per page (default: 50)
+
+Example:
+```bash
+iota client dynamic-field 0xabc123... --limit 10
+```
+
+### tx-block
+
+Get transaction details:
+
+```bash
+iota client tx-block <DIGEST>
+```
+
+Example:
+```bash
+iota client tx-block 5KzKVq7qP2xH8FwkQJqxhPNBjkFVjM3xZoJpP5KwqAkH
+```
+
+### chain-identifier
+
+Query the chain identifier:
+
+```bash
+iota client chain-identifier
+```
+
+Output:
+```
+Chain identifier: 2a:4c:c5:0b:8f:69:a8:5e:...
+```
+
+## Transactions
+
+### call
+
+Call a Move function:
+
+```bash
+iota client call [OPTIONS]
+```
+
+Required options:
+- `--package <ID>` - Package object ID
+- `--module <NAME>` - Module name
+- `--function <NAME>` - Function name
+
+Optional:
+- `--type-args <TYPE>...` - Type arguments
+- `--args <ARG>...` - Function arguments
+- `--gas <ID>...` - Gas payment objects
+- `--gas-budget <AMOUNT>` - Gas budget in NANOs
+
+Example:
+```bash
+iota client call \
+  --package 0x2 \
+  --module coin \
+  --function transfer \
+  --type-args 0x2::iota::IOTA \
+  --args 0xabc123 0xdef456 1000000000 \
+  --gas-budget 10000000
+```
+
+### transfer
+
+Transfer an object:
+
+```bash
+iota client transfer [OPTIONS]
+```
+
+Options:
+- `--to <ADDRESS>` - Recipient address or alias
+- `--object-id <ID>` - Object to transfer
+- `--gas <ID>...` - Gas payment
+- `--gas-budget <AMOUNT>` - Gas budget
+
+Example:
+```bash
+iota client transfer \
+  --to bob \
+  --object-id 0xabc123... \
+  --gas-budget 5000000
+```
+
+### split-coin
+
+Split a coin into multiple coins:
+
+```bash
+iota client split-coin [OPTIONS]
+```
+
+Options:
+- `--coin-id <ID>` - Coin to split
+- `--amounts <AMOUNT>...` - Split amounts (mutually exclusive with `--count`)
+- `--count <N>` - Number of equal splits (mutually exclusive with `--amounts`)
+- `--gas <ID>...` - Gas payment
+- `--gas-budget <AMOUNT>` - Gas budget
+
+Examples:
+```bash
+# Split by specific amounts
+iota client split-coin \
+  --coin-id 0xabc... \
+  --amounts 1000 2000 5000 \
+  --gas-budget 5000000
+
+# Split into equal parts
+iota client split-coin \
+  --coin-id 0xabc... \
+  --count 5 \
+  --gas-budget 5000000
+```
+
+### merge-coin
+
+Merge two coins:
+
+```bash
+iota client merge-coin [OPTIONS]
+```
+
+Options:
+- `--primary-coin <ID>` - Coin to merge into
+- `--coin-to-merge <ID>` - Coin to be merged
+- `--gas <ID>...` - Gas payment
+- `--gas-budget <AMOUNT>` - Gas budget
+
+Example:
+```bash
+iota client merge-coin \
+  --primary-coin 0xabc... \
+  --coin-to-merge 0xdef... \
+  --gas-budget 5000000
+```
+
+### pay
+
+Pay coins to recipients:
+
+```bash
+iota client pay [OPTIONS]
+```
+
+Options:
+- `--input-coins <ID>...` - Input coins
+- `--recipients <ADDRESS>...` - Recipient addresses
+- `--amounts <AMOUNT>...` - Amounts to pay (must match recipients)
+- `--gas <ID>...` - Gas payment
+- `--gas-budget <AMOUNT>` - Gas budget
+
+Example:
+```bash
+iota client pay \
+  --input-coins 0xabc... 0xdef... \
+  --recipients alice bob \
+  --amounts 1000 2000 \
+  --gas-budget 10000000
+```
+
+### pay-iota
+
+Pay IOTA coins (gas coin can be used as input):
+
+```bash
+iota client pay-iota [OPTIONS]
+```
+
+Options:
+- `--input-coins <ID>...` - Input IOTA coins (optional, auto-selected if not provided)
+- `--recipients <ADDRESS>...` - Recipient addresses
+- `--amounts <AMOUNT>...` - Amounts to pay
+- `--gas-budget <AMOUNT>` - Gas budget
+
+Example:
+```bash
+iota client pay-iota \
+  --recipients alice bob \
+  --amounts 1000000000 2000000000 \
+  --gas-budget 10000000
+```
+
+### pay-all-iota
+
+Pay all IOTA (minus gas) to a recipient:
+
+```bash
+iota client pay-all-iota [OPTIONS]
+```
+
+Options:
+- `--input-coins <ID>...` - Input IOTA coins (includes gas)
+- `--recipient <ADDRESS>` - Recipient address
+- `--gas-budget <AMOUNT>` - Gas budget
+
+Example:
+```bash
+iota client pay-all-iota \
+  --input-coins 0xabc... 0xdef... \
+  --recipient alice \
+  --gas-budget 10000000
+```
+
+## Advanced Operations
+
+### ptb
+
+Build and execute programmable transaction blocks:
+
+```bash
+iota client ptb [COMMANDS]
+```
+
+See [Transaction Builder](/cli/transaction-builder) for details.
+
+### publish
+
+Publish a Move package:
+
+```bash
+iota client publish [OPTIONS] [PACKAGE_PATH]
+```
+
+See [Move Commands](/cli/move-commands) for details.
+
+### upgrade
+
+Upgrade a Move package:
+
+```bash
+iota client upgrade [OPTIONS] [PACKAGE_PATH]
+```
+
+See [Move Commands](/cli/move-commands) for details.
+
+### verify-bytecode-meter
+
+Verify bytecode meter limits:
+
+```bash
+iota client verify-bytecode-meter [OPTIONS]
+```
+
+Options:
+- `--package <PATH>` - Package path
+- `--protocol-version <VERSION>` - Protocol version to use
+- `--module <PATH>...` - Specific module paths to verify
+
+Example:
+```bash
+iota client verify-bytecode-meter --package ./my_package
+```
+
+### verify-source
+
+Verify on-chain package matches local source:
+
+```bash
+iota client verify-source [OPTIONS] [PACKAGE_PATH]
+```
+
+Options:
+- `--verify-deps` - Also verify dependencies
+- `--skip-source` - Skip source verification (only valid with `--verify-deps`)
+- `--address-override <ADDRESS>` - Override package address
+
+Example:
+```bash
+iota client verify-source ./my_package --verify-deps
+```
+
+## Signing & Execution
+
+### sign
+
+Sign transaction data:
+
+```bash
+iota client sign [OPTIONS]
+```
+
+Options:
+- `--address <ADDRESS>` - Signer address or alias
+- `--data <BASE64>` - Base64-encoded transaction data
+- `--intent <INTENT>` - Intent scope (optional)
+
+Example:
+```bash
+iota client sign \
+  --address alice \
+  --data AAA... \
+  --intent transaction
+```
+
+### execute-signed-tx
+
+Execute a signed transaction:
+
+```bash
+iota client execute-signed-tx [OPTIONS]
+```
+
+Options:
+- `--tx-bytes <BASE64>` - Transaction bytes
+- `--signatures <BASE64>...` - Signature(s)
+
+Example:
+```bash
+iota client execute-signed-tx \
+  --tx-bytes AAA... \
+  --signatures AQED...
+```
+
+### execute-combined-signed-tx
+
+Execute a combined signed transaction:
+
+```bash
+iota client execute-combined-signed-tx --signed-tx-bytes <BASE64>
+```
+
+### serialized-tx
+
+Inspect serialized transaction:
+
+```bash
+iota client serialized-tx <TX_BYTES> [OPTIONS]
+```
+
+Options:
+- `--dry-run` - Perform dry run
+- `--dev-inspect` - Dev inspect mode
+
+Example:
+```bash
+iota client serialized-tx AAA... --dry-run
+```
+
+## Transaction Processing Options
+
+Many transaction commands support these processing flags:
+
+- `--tx-digest` - Only compute and display digest
+- `--dry-run` - Simulate without executing
+- `--dev-inspect` - Dev inspect mode (no state changes)
+- `--serialize-unsigned-transaction` - Output unsigned transaction bytes
+- `--serialize-signed-transaction` - Output signed transaction bytes
+- `--sender <ADDRESS>` - Override sender address
+- `--display <FIELDS>` - Select response fields to display
+- `--gas-budget <AMOUNT>` - Set gas budget
+- `--gas-price <PRICE>` - Set gas price
+- `--gas-sponsor <ADDRESS>` - Set gas sponsor
+
+## Faucet
+
+Request test tokens:
+
+```bash
+iota client faucet [OPTIONS]
+```
+
+Options:
+- `--address <ADDRESS>` - Address to fund (defaults to active)
+- `--url <URL>` - Faucet URL (defaults to active env faucet)
+
+Example:
+```bash
+iota client faucet --address alice
+```
+
+## Replay & Debugging
+
+### replay-transaction
+
+Replay a transaction:
+
+```bash
+iota client replay-transaction [OPTIONS]
+```
+
+Options:
+- `--tx-digest <DIGEST>` - Transaction digest
+- `--gas-info` - Show gas details
+- `--ptb-info` - Show PTB command details
+- `--executor-version <VERSION>` - Executor version
+- `--protocol-version <VERSION>` - Protocol version
+
+Example:
+```bash
+iota client replay-transaction \
+  --tx-digest 5KzKVq7qP2xH8FwkQJqxhPNBjkFVjM3xZoJpP5KwqAkH \
+  --gas-info
+```
+
+### replay-batch
+
+Replay multiple transactions:
+
+```bash
+iota client replay-batch [OPTIONS]
+```
+
+Options:
+- `--path <FILE>` - File with transaction digests (one per line)
+- `--terminate-early` - Stop on first error
+
+### replay-checkpoint
+
+Replay transactions from checkpoints:
+
+```bash
+iota client replay-checkpoint [OPTIONS]
+```
+
+Options:
+- `--start <NUM>` - Starting checkpoint
+- `--end <NUM>` - Ending checkpoint
+- `--terminate-early` - Stop on first error
+
+Example:
+```bash
+iota client replay-checkpoint --start 100 --end 200
+```
+
+### profile-transaction
+
+Profile transaction gas usage:
+
+```bash
+iota client profile-transaction [OPTIONS]
+```
+
+Options:
+- `--tx-digest <DIGEST>` - Transaction to profile
+- `--profile-output <PATH>` - Output file path
+
+Example:
+```bash
+iota client profile-transaction \
+  --tx-digest 5KzKVq7qP2xH8FwkQJqxhPNBjkFVjM3xZoJpP5KwqAkH \
+  --profile-output ./profile.json
+```
+
+## Output Formats
+
+All commands support JSON output:
+
+```bash
+iota client balance --json
+```
+
+Example JSON output:
+```json
+{
+  "coinType": "0x2::iota::IOTA",
+  "totalBalance": "1000000000000",
+  "lockedBalance": "0"
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Move Commands" icon="code" href="/cli/move-commands">
+    Build and publish Move packages
+  </Card>
+  <Card title="Transaction Builder" icon="block-brick" href="/cli/transaction-builder">
+    Create complex transactions with PTB
+  </Card>
+</CardGroup>

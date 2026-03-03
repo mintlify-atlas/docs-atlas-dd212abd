@@ -1,0 +1,241 @@
+---
+title: "Installing the IOTA CLI"
+description: "Step-by-step guide to installing and configuring the IOTA command-line interface"
+---
+
+## Prerequisites
+
+- Rust 1.75.0 or later
+- Git
+- 8GB RAM minimum
+- 50GB available disk space
+
+## Installation Methods
+
+### Install from Source
+
+The recommended way to install the IOTA CLI is from source:
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/iotaledger/iota.git
+    cd iota
+    ```
+  </Step>
+
+  <Step title="Build the CLI">
+    ```bash
+    cargo build --release --bin iota
+    ```
+    
+    The binary will be available at `target/release/iota`.
+  </Step>
+
+  <Step title="Add to PATH (optional)">
+    ```bash
+    # Linux/macOS
+    sudo cp target/release/iota /usr/local/bin/
+    
+    # Or add to PATH in your shell config
+    export PATH="$PATH:$(pwd)/target/release"
+    ```
+  </Step>
+
+  <Step title="Verify installation">
+    ```bash
+    iota --version
+    ```
+    
+    Expected output:
+    ```
+    iota 0.x.x
+    ```
+  </Step>
+</Steps>
+
+### Build with Optional Features
+
+The CLI supports optional features that can be enabled during build:
+
+```bash
+# Enable indexer support (requires PostgreSQL)
+cargo build --release --bin iota --features indexer
+
+# Enable IOTA Names support
+cargo build --release --bin iota --features iota-names
+
+# Enable shell completions generation
+cargo build --release --bin iota --features gen-completions
+
+# Enable all features
+cargo build --release --bin iota --all-features
+```
+
+## Initial Configuration
+
+After installation, initialize your configuration:
+
+<Steps>
+  <Step title="Create initial config">
+    The first time you run most commands, you'll be prompted to create a configuration:
+    
+    ```bash
+    iota client
+    ```
+    
+    This creates:
+    - `~/.iota/iota_config/client.yaml`
+    - `~/.iota/iota_config/iota.keystore`
+  </Step>
+
+  <Step title="Create your first address">
+    Generate a new address:
+    
+    ```bash
+    iota client new-address ed25519
+    ```
+    
+    Output:
+    ```
+    Created new keypair for address with scheme ED25519
+    Secret Recovery Phrase: [your 12 word mnemonic]
+    ```
+    
+    <Warning>
+      Save your mnemonic phrase securely. It's the only way to recover your address.
+    </Warning>
+  </Step>
+
+  <Step title="Set active network">
+    Connect to a network:
+    
+    ```bash
+    # Devnet
+    iota client new-env --alias devnet --rpc https://api.devnet.iota.cafe:443
+    
+    # Testnet
+    iota client new-env --alias testnet --rpc https://api.testnet.iota.cafe:443
+    
+    # Switch environment
+    iota client switch --env devnet
+    ```
+  </Step>
+
+  <Step title="Get test tokens">
+    Request tokens from the faucet:
+    
+    ```bash
+    iota client faucet
+    ```
+    
+    Verify your balance:
+    ```bash
+    iota client balance
+    ```
+  </Step>
+</Steps>
+
+## Shell Completions
+
+Generate shell completions for your preferred shell:
+
+```bash
+# Bash
+iota generate-completions --shell bash > ~/.local/share/bash-completion/completions/iota
+
+# Zsh
+iota generate-completions --shell zsh > ~/.zsh/completions/_iota
+
+# Fish
+iota generate-completions --shell fish > ~/.config/fish/completions/iota.fish
+
+# PowerShell
+iota generate-completions --shell powershell > $PROFILE.CurrentUserAllHosts
+```
+
+## Configuration Files
+
+The CLI uses these configuration files:
+
+### client.yaml
+
+Location: `~/.iota/iota_config/client.yaml`
+
+```yaml
+keystore:
+  File: /home/user/.iota/iota_config/iota.keystore
+envs:
+  - alias: devnet
+    rpc: "https://api.devnet.iota.cafe:443"
+    ws: null
+  - alias: localnet  
+    rpc: "http://127.0.0.1:9000"
+    ws: null
+active_env: devnet
+active_address: "0x..."
+```
+
+### iota.keystore
+
+Location: `~/.iota/iota_config/iota.keystore`
+
+Encrypted storage for private keys. Never share this file.
+
+## Updating the CLI
+
+To update to the latest version:
+
+```bash
+cd iota
+git pull
+cargo build --release --bin iota
+```
+
+## Troubleshooting
+
+### Build Errors
+
+If you encounter build errors:
+
+```bash
+# Update Rust
+rustup update stable
+
+# Clean build cache
+cargo clean
+cargo build --release --bin iota
+```
+
+### Configuration Issues
+
+Reset your configuration:
+
+```bash
+# Backup existing config
+mv ~/.iota/iota_config ~/.iota/iota_config.backup
+
+# Run CLI to create fresh config
+iota client
+```
+
+### Connection Issues
+
+Verify network connectivity:
+
+```bash
+curl -X POST https://api.devnet.iota.cafe:443 \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"iota_getChainIdentifier","id":1}'
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Client Commands" icon="terminal" href="/cli/client-commands">
+    Start interacting with the IOTA network
+  </Card>
+  <Card title="Move Commands" icon="code" href="/cli/move-commands">
+    Build your first Move package
+  </Card>
+</CardGroup>

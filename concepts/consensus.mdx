@@ -1,0 +1,430 @@
+---
+title: Consensus mechanism
+description: Deep dive into IOTA's DAG-based consensus protocol and how validators reach agreement on transaction ordering.
+---
+
+IOTA implements a DAG-based consensus protocol that provides high throughput and low latency while maintaining Byzantine fault tolerance. This protocol is optimized for the common case where most objects are owned, requiring consensus only for shared objects.
+
+## Consensus architecture
+
+IOTA's consensus system consists of several key components working together:
+
+### Block DAG
+
+Validators propose blocks that form a Directed Acyclic Graph (DAG):
+
+```rust
+pub struct Block {
+    // Consensus epoch
+    epoch: Epoch,
+    // Round number
+    round: Round,
+    // Validator proposing the block
+    author: AuthorityIndex,
+    // Block creation timestamp
+    timestamp_ms: BlockTimestampMs,
+    // References to blocks from previous round
+    ancestors: Vec<BlockRef>,
+    // Transactions included in this block
+    transactions: Vec<Transaction>,
+    // Votes for committing previous leaders
+    commit_votes: Vec<CommitVote>,
+}
+```
+
+Each block:
+- Is proposed by one validator
+- References blocks from the previous round (ancestors)
+- Contains a batch of transactions
+- Is signed by the proposing validator
+
+<Note>
+The DAG structure allows validators to propose blocks in parallel, enabling high throughput. Blocks from the same round can be processed concurrently.
+</Note>
+
+### Block references
+
+Blocks reference each other via `BlockRef`:
+
+```rust
+pub struct BlockRef {
+    // Round number
+    round: Round,
+    // Author validator index
+    author: AuthorityIndex,
+    // Cryptographic hash of block
+    digest: BlockDigest,
+}
+```
+
+This creates a causal history: if block B references block A, then A happened before B.
+
+## Consensus rounds
+
+Consensus operates in rounds:
+
+1. **Round progression**: Validators propose blocks for the current round
+2. **Block broadcast**: Each validator broadcasts their block to the network
+3. **Block validation**: Validators verify incoming blocks and add them to their local DAG
+4. **Round advancement**: Once a validator has enough blocks for round N, they can propose for round N+1
+
+```rust
+// Rounds are simple integers
+pub type Round = u32;
+
+// Genesis round is round 0
+const GENESIS_ROUND: Round = 0;
+
+// Validators build on top of each other's blocks
+let current_round = last_included_round + 1;
+```
+
+## Leader-based commit
+
+IOTA uses a leader-based commit protocol:
+
+### Leader schedule
+
+For each round, one validator is designated as the leader:
+
+```rust
+pub struct LeaderSchedule {
+    // Determines leader for each round
+    leader_swap_table: Arc<RwLock<LeaderSwapTable>>,
+    // Number of leaders to elect per round
+    num_leaders: usize,
+}
+
+// Get leader for a specific round
+fn leader_at_round(&self, round: Round) -> AuthorityIndex {
+    // Uses reputation scores and rotation to select leader
+}
+```
+
+Leaders are rotated among validators based on:
+- Stake weight
+- Reputation scores (derived from past performance)
+- Deterministic rotation to ensure fairness
+
+<Info>
+Leader rotation ensures that no single validator can monopolize block production while giving higher-stake validators more opportunities proportional to their stake.
+</Info>
+
+### Wave structure
+
+Consensus operates in "waves", each consisting of:
+
+```rust
+// Each wave has a minimum length
+const MINIMUM_WAVE_LENGTH: Round = 3;
+
+// Typical wave structure:
+// Round N:   Leader proposes
+// Round N+1: Validators vote on leader
+// Round N+2: Decision round
+```
+
+1. **Leader round**: Leader for this round proposes their block
+2. **Voting rounds**: Validators vote by referencing the leader's block
+3. **Decision round**: If enough validators voted, leader is committed
+
+## Universal committer
+
+The Universal Committer makes commit decisions:
+
+```rust
+pub struct UniversalCommitter {
+    // Consensus context
+    context: Arc<Context>,
+    // Leader selection
+    leader_schedule: Arc<LeaderSchedule>,
+    // DAG state
+    dag_state: Arc<RwLock<DagState>>,
+    // Number of leaders per round
+    number_of_leaders: usize,
+    // Whether to use pipelining
+    pipelined: bool,
+}
+```
+
+### Commit decision
+
+A leader block is committed when:
+
+1. The leader block has a quorum (2f+1) of validators referencing it
+2. The references appear in blocks from subsequent rounds
+3. No conflicting leaders have more support
+
+```rust
+pub struct CommittedSubDag {
+    // The leader block being committed
+    leader: VerifiedBlock,
+    // All blocks that causally precede the leader
+    blocks: Vec<VerifiedBlock>,
+    // Timestamp of the commit
+    timestamp_ms: BlockTimestampMs,
+    // Commit index
+    commit_index: CommitIndex,
+}
+```
+
+## Stake aggregation
+
+IOTA uses stake-weighted voting:
+
+```rust
+pub struct StakeAggregator<T> {
+    // Stake by authority
+    stake_by_authority: Vec<Stake>,
+    // Total stake in committee
+    total_stake: Stake,
+    // Collected stakes
+    collected: HashMap<AuthorityIndex, T>,
+}
+
+// Check if we have a quorum (2f+1)
+pub fn has_quorum(&self, threshold: QuorumThreshold) -> bool {
+    match threshold {
+        QuorumThreshold::Quorum => {
+            // 2f+1 stake (can tolerate f Byzantine failures)
+            self.collected_stake >= self.quorum_threshold()
+        }
+        QuorumThreshold::All => {
+            // All validators must participate
+            self.collected_stake == self.total_stake
+        }
+    }
+}
+```
+
+<Info>
+Byzantine fault tolerance requires 2f+1 stake to make progress, where f is the maximum stake controlled by Byzantine validators.
+</Info>
+
+## Block verification
+
+Before accepting blocks, validators verify:
+
+```rust
+pub trait BlockVerifier {
+    fn verify(&self, block: &SignedBlock) -> ConsensusResult<()>;
+}
+
+// Verification checks:
+// - Valid signature from claimed author
+// - Correct epoch and protocol version
+// - Round number is sequential
+// - Ancestors are from previous round
+// - Timestamp is not too far in past/future
+// - Transactions are valid
+// - Block size is within limits
+```
+
+## Commit observer
+
+The commit observer processes committed sub-DAGs:
+
+```rust
+pub struct CommitObserver {
+    // Channel to send committed output
+    sender: Sender<CommittedSubDag>,
+    // Last processed commit index
+    last_processed: CommitIndex,
+}
+
+// Process a committed sub-DAG
+pub fn handle_commit(&mut self, committed: CommittedSubDag) {
+    // Extract transactions in commit order
+    let transactions = self.order_transactions(&committed);
+    
+    // Send to execution layer
+    self.sender.send(committed)?;
+    
+    // Update last processed index
+    self.last_processed = committed.commit_index;
+}
+```
+
+## Transaction ordering
+
+Within a committed sub-DAG, transactions are ordered deterministically:
+
+1. **Block ordering**: Blocks are ordered by causal relationships in the DAG
+2. **Transaction ordering**: Within each block, transactions appear in the order specified by the proposer
+3. **Deterministic execution**: All validators execute transactions in the same order
+
+```rust
+// Order blocks in a committed sub-DAG
+fn order_blocks(subdag: &CommittedSubDag) -> Vec<VerifiedBlock> {
+    // Topological sort by round and authority
+    subdag.blocks
+        .iter()
+        .sorted_by_key(|b| (b.round(), b.author()))
+        .collect()
+}
+```
+
+## Consensus commit
+
+Commits represent finalized decisions:
+
+```rust
+pub struct Commit {
+    // Sequential commit index
+    index: CommitIndex,
+    // Hash of previous commit (forming a chain)
+    previous_digest: CommitDigest,
+    // Commit timestamp
+    timestamp_ms: BlockTimestampMs,
+    // The committed leader block
+    leader: BlockRef,
+    // All blocks in the committed sub-DAG
+    blocks: Vec<BlockRef>,
+}
+```
+
+Commits:
+- Are sequentially numbered starting from 1
+- Form a chain via `previous_digest`
+- Include references to all committed blocks
+- Provide finality for included transactions
+
+<Note>
+Commits are stored durably and used for crash recovery and synchronization. A validator can reconstruct the full DAG state from the commit history.
+</Note>
+
+## Checkpoints
+
+Periodically, validators create checkpoints:
+
+```rust
+pub struct CheckpointSummary {
+    // Epoch of this checkpoint
+    epoch: EpochId,
+    // Sequence number within epoch
+    sequence_number: CheckpointSequenceNumber,
+    // Hash of previous checkpoint
+    previous_digest: CheckpointDigest,
+    // Transactions in this checkpoint
+    transactions: Vec<TransactionDigest>,
+    // Checkpoint timestamp
+    timestamp_ms: CheckpointTimestamp,
+}
+```
+
+Checkpoints provide:
+- Finality guarantees for clients
+- Synchronization points for validators
+- State snapshots for recovery
+- Pruning boundaries for old data
+
+## Handling failures
+
+### Network delays
+
+If a validator doesn't receive blocks:
+
+```rust
+pub struct Synchronizer {
+    // Fetch missing blocks from peers
+    pub fn fetch_blocks(&self, refs: Vec<BlockRef>) -> Vec<VerifiedBlock> {
+        // Request missing blocks from other validators
+    }
+}
+```
+
+### Byzantine validators
+
+The protocol tolerates up to f Byzantine validators where:
+- Total stake = 3f + 1
+- Byzantine stake ≤ f
+- Honest stake ≥ 2f + 1
+
+Byzantine behaviors that are tolerated:
+- Not proposing blocks
+- Proposing invalid blocks (detected and rejected)
+- Proposing multiple blocks for the same round (equivocation)
+
+<Warning>
+Equivocation (proposing multiple conflicting blocks) is detectable. IOTA can implement slashing to punish equivocating validators.
+</Warning>
+
+## Optimizations
+
+### Pipelining
+
+The Universal Committer supports pipelining to commit multiple leaders simultaneously:
+
+```rust
+let committer = UniversalCommitterBuilder::new(context, leader_schedule, dag_state)
+    .with_pipeline(true) // Enable pipelining
+    .build();
+```
+
+Benefits:
+- Higher commit throughput
+- Better utilization of network bandwidth
+- Lower latency for transaction finality
+
+### Fast path for owned objects
+
+Transactions using only owned objects skip consensus:
+
+1. Client submits transaction to validator
+2. Validator verifies and executes immediately
+3. Validator signs the effects
+4. Client collects 2f+1 signatures (certificate)
+5. Transaction is finalized without consensus delay
+
+<Info>
+Fast path execution is a major performance advantage. Most transactions in practice use owned objects and can execute without consensus latency.
+</Info>
+
+## Epochs and reconfiguration
+
+Consensus operates within epochs:
+
+```rust
+pub struct Epoch {
+    // Epoch identifier
+    epoch_id: EpochId,
+    // Committee for this epoch
+    committee: Committee,
+    // Protocol version
+    protocol_version: ProtocolVersion,
+    // Epoch start time
+    epoch_start_timestamp: u64,
+}
+```
+
+At epoch boundaries:
+1. Current epoch ends at a specific checkpoint
+2. Validator set may change (staking updates)
+3. Protocol version may upgrade
+4. New epoch begins with new committee
+
+## Consensus metrics
+
+Key performance metrics:
+
+- **Throughput**: Transactions per second committed
+- **Latency**: Time from transaction submission to finality
+- **Liveness**: Ability to make progress and commit blocks
+- **Safety**: No conflicting commits (Byzantine fault tolerance)
+
+## Related topics
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="sitemap" href="/concepts/architecture">
+    Overview of IOTA's system architecture
+  </Card>
+  <Card title="Transactions" icon="exchange-alt" href="/concepts/transactions">
+    Learn about transaction structure and lifecycle
+  </Card>
+  <Card title="Objects and ownership" icon="box" href="/concepts/objects-and-ownership">
+    Understand owned vs shared objects
+  </Card>
+  <Card title="Gas and fees" icon="gas-pump" href="/concepts/gas-and-fees">
+    Learn about transaction costs
+  </Card>
+</CardGroup>

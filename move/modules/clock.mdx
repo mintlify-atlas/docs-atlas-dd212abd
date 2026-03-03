@@ -1,0 +1,393 @@
+---
+title: Clock Module
+description: Access blockchain time through the IOTA Clock singleton object
+---
+
+# Clock Module
+
+The `iota::clock` module provides APIs for accessing time from Move contracts through a unique shared object at address `0x6`.
+
+Source: `crates/iota-framework/packages/iota-framework/sources/clock.move`
+
+## Core Type
+
+### Clock
+
+Singleton shared object that exposes time to Move calls:
+
+```move
+public struct Clock has key {
+    id: UID,
+    timestamp_ms: u64,
+}
+```
+
+Key properties:
+- Found at address `0x6`
+- Can only be read (immutable reference) by entry functions
+- Automatically updated by system transactions
+- Timestamp is milliseconds since an arbitrary point in the past
+
+## Accessing Time
+
+### timestamp_ms
+
+Get the current timestamp in milliseconds:
+
+<ParamField path="clock" type="&Clock" required>
+  Immutable reference to the Clock object
+</ParamField>
+
+```move
+public fun timestamp_ms(clock: &Clock): u64
+```
+
+Example:
+```move
+use iota::clock::{Self, Clock};
+
+public fun get_current_time(clock: &Clock): u64 {
+    clock.timestamp_ms()
+}
+```
+
+## Usage Patterns
+
+### Entry Function with Clock
+
+Entry functions can accept the Clock as a parameter:
+
+```move
+use iota::clock::{Self, Clock};
+
+public entry fun check_deadline(clock: &Clock, deadline: u64) {
+    let current_time = clock.timestamp_ms();
+    assert!(current_time <= deadline, 0);
+}
+```
+
+### Time-Based Logic
+
+Implement time-dependent functionality:
+
+```move
+module example::auction {
+    use iota::clock::{Self, Clock};
+    use iota::object::{Self, UID};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    public struct Auction has key {
+        id: UID,
+        end_time: u64,
+        highest_bid: u64,
+    }
+
+    public fun create_auction(
+        duration_ms: u64,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        let auction = Auction {
+            id: object::new(ctx),
+            end_time: clock.timestamp_ms() + duration_ms,
+            highest_bid: 0,
+        };
+        transfer::share_object(auction);
+    }
+
+    public fun place_bid(
+        auction: &mut Auction,
+        bid: u64,
+        clock: &Clock
+    ) {
+        assert!(clock.timestamp_ms() < auction.end_time, 0);
+        assert!(bid > auction.highest_bid, 1);
+        auction.highest_bid = bid;
+    }
+
+    public fun is_auction_ended(auction: &Auction, clock: &Clock): bool {
+        clock.timestamp_ms() >= auction.end_time
+    }
+}
+```
+
+### Cooldown Mechanism
+
+Implement cooldown periods:
+
+```move
+module example::game {
+    use iota::clock::{Self, Clock};
+    use iota::object::{Self, UID};
+
+    public struct Character has key {
+        id: UID,
+        last_action_time: u64,
+        cooldown_ms: u64,
+    }
+
+    const ECooldownNotFinished: u64 = 0;
+
+    public fun perform_action(
+        character: &mut Character,
+        clock: &Clock
+    ) {
+        let current_time = clock.timestamp_ms();
+        assert!(
+            current_time >= character.last_action_time + character.cooldown_ms,
+            ECooldownNotFinished
+        );
+        
+        character.last_action_time = current_time;
+        // Perform the action
+    }
+
+    public fun cooldown_remaining(
+        character: &Character,
+        clock: &Clock
+    ): u64 {
+        let current_time = clock.timestamp_ms();
+        let ready_time = character.last_action_time + character.cooldown_ms;
+        
+        if (current_time >= ready_time) {
+            0
+        } else {
+            ready_time - current_time
+        }
+    }
+}
+```
+
+### Vesting Schedule
+
+Implement token vesting:
+
+```move
+module example::vesting {
+    use iota::clock::{Self, Clock};
+    use iota::object::{Self, UID};
+    use iota::balance::{Self, Balance};
+    use iota::coin::{Self, Coin};
+
+    public struct VestingContract<phantom T> has key {
+        id: UID,
+        total_amount: u64,
+        start_time: u64,
+        duration_ms: u64,
+        claimed: u64,
+        balance: Balance<T>,
+    }
+
+    public fun create_vesting<T>(
+        balance: Balance<T>,
+        start_time: u64,
+        duration_ms: u64,
+        ctx: &mut TxContext
+    ) {
+        let total = balance.value();
+        let vesting = VestingContract {
+            id: object::new(ctx),
+            total_amount: total,
+            start_time,
+            duration_ms,
+            claimed: 0,
+            balance,
+        };
+        transfer::transfer(vesting, ctx.sender());
+    }
+
+    public fun claim_vested<T>(
+        vesting: &mut VestingContract<T>,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ): Coin<T> {
+        let current_time = clock.timestamp_ms();
+        let vested = calculate_vested_amount(vesting, current_time);
+        let claimable = vested - vesting.claimed;
+        
+        vesting.claimed = vested;
+        let balance = vesting.balance.split(claimable);
+        balance.into_coin(ctx)
+    }
+
+    fun calculate_vested_amount<T>(
+        vesting: &VestingContract<T>,
+        current_time: u64
+    ): u64 {
+        if (current_time < vesting.start_time) {
+            return 0
+        };
+        
+        let end_time = vesting.start_time + vesting.duration_ms;
+        if (current_time >= end_time) {
+            return vesting.total_amount
+        };
+        
+        let elapsed = current_time - vesting.start_time;
+        (vesting.total_amount * elapsed) / vesting.duration_ms
+    }
+}
+```
+
+## Important Restrictions
+
+### Immutable Reference Only
+
+Entry functions **cannot** accept Clock by mutable reference or value:
+
+```move
+// ✓ Correct - immutable reference
+public entry fun valid_function(clock: &Clock) { }
+
+// ✗ Wrong - mutable reference (will fail verification)
+public entry fun invalid_function(clock: &mut Clock) { }
+
+// ✗ Wrong - by value (will fail verification)
+public entry fun invalid_function(clock: Clock) { }
+```
+
+Validators will reject transactions that attempt to use Clock incorrectly.
+
+### System-Only Updates
+
+The Clock timestamp is updated automatically:
+
+```move
+#[allow(unused_function)]
+fun consensus_commit_prologue(clock: &mut Clock, timestamp_ms: u64, ctx: &TxContext) {
+    assert!(ctx.sender() == @0x0, ENotSystemAddress);
+    clock.timestamp_ms = timestamp_ms
+}
+```
+
+Only system transactions (sender `@0x0`) can modify the Clock.
+
+## Clock Address
+
+The Clock is always located at address `0x6`:
+
+```move
+const IOTA_CLOCK_OBJECT_ID: address = @0x6;
+```
+
+## Testing Support
+
+The module provides testing utilities:
+
+```move
+#[test_only]
+public fun create_for_testing(ctx: &mut TxContext): Clock
+
+#[test_only]
+public fun share_for_testing(clock: Clock)
+
+#[test_only]
+public fun increment_for_testing(clock: &mut Clock, tick: u64)
+
+#[test_only]
+public fun set_for_testing(clock: &mut Clock, timestamp_ms: u64)
+
+#[test_only]
+public fun destroy_for_testing(clock: Clock)
+```
+
+Example test:
+```move
+#[test]
+fun test_auction() {
+    let ctx = &mut tx_context::dummy();
+    let mut clock = clock::create_for_testing(ctx);
+    clock.set_for_testing(1000);
+    
+    // Test auction logic
+    
+    clock.destroy_for_testing();
+}
+```
+
+## Error Codes
+
+```move
+const ENotSystemAddress: u64 = 0;  // Sender is not @0x0
+```
+
+## Complete Example: Time-Locked Safe
+
+```move
+module example::time_lock {
+    use iota::clock::{Self, Clock};
+    use iota::object::{Self, UID};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    const ENotUnlocked: u64 = 0;
+
+    public struct TimeLockSafe<T: key + store> has key {
+        id: UID,
+        unlock_time: u64,
+        contents: Option<T>,
+    }
+
+    public fun create<T: key + store>(
+        item: T,
+        unlock_time: u64,
+        ctx: &mut TxContext
+    ) {
+        let safe = TimeLockSafe {
+            id: object::new(ctx),
+            unlock_time,
+            contents: option::some(item),
+        };
+        transfer::transfer(safe, ctx.sender());
+    }
+
+    public fun unlock<T: key + store>(
+        safe: TimeLockSafe<T>,
+        clock: &Clock,
+        ctx: &TxContext
+    ): T {
+        assert!(
+            clock.timestamp_ms() >= safe.unlock_time,
+            ENotUnlocked
+        );
+        
+        let TimeLockSafe { id, unlock_time: _, contents } = safe;
+        id.delete();
+        contents.destroy_some()
+    }
+
+    public fun is_unlocked<T: key + store>(
+        safe: &TimeLockSafe<T>,
+        clock: &Clock
+    ): bool {
+        clock.timestamp_ms() >= safe.unlock_time
+    }
+
+    public fun time_remaining<T: key + store>(
+        safe: &TimeLockSafe<T>,
+        clock: &Clock
+    ): u64 {
+        let current = clock.timestamp_ms();
+        if (current >= safe.unlock_time) {
+            0
+        } else {
+            safe.unlock_time - current
+        }
+    }
+}
+```
+
+## Best Practices
+
+1. **Always use immutable reference**: Never try to mutate the Clock in user code
+
+2. **Check time constraints early**: Verify time-based conditions at the start of functions
+
+3. **Use milliseconds**: All timestamps are in milliseconds since epoch
+
+4. **Test with mock clock**: Use testing utilities to simulate different times
+
+5. **Consider time zones**: The timestamp is UTC-based and doesn't include timezone information
+
+6. **Handle edge cases**: Check for potential overflow when adding durations to timestamps

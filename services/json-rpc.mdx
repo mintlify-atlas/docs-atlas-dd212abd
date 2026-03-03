@@ -1,0 +1,283 @@
+---
+title: JSON-RPC Service
+description: Building and using JSON-RPC servers to expose IOTA APIs
+---
+
+# IOTA JSON-RPC
+
+The `iota-json-rpc` library crate provides a flexible framework for building JSON-RPC servers to expose IOTA APIs.
+
+## Overview
+
+The JSON-RPC framework:
+- Supports requests over **HTTP** and **WebSocket**
+- Primarily used to spawn nested services in `iota-indexer` or `iota-node` applications
+- Provides modular API implementations that can be selectively registered
+
+## Architecture
+
+The library provides module implementations for various JSON-RPC server traits:
+
+| Server Trait | Derived From | Purpose |
+|--------------|--------------|----------|
+| `IndexerApiServer` | `IndexerApi` | Indexer-specific queries |
+| `GovernanceReadApiServer` | `GovernanceReadApi` | Governance and epoch data |
+| `MoveUtilsApiServer` | `MoveUtilsApi` | Move utilities |
+| `CoinReadApiServer` | `CoinReadApi` | Coin and balance queries |
+| `TransactionBuilderApiServer` | `TransactionBuilderApi` | Transaction construction |
+| `ReadApiServer` | `ReadApi` | General read operations |
+| `WriteApiServer` | `WriteApi` | Transaction execution |
+
+Traits are derived in the `iota-json-rpc-api` crate from JSON-RPC API definitions.
+
+## Module Registration
+
+Modules are **not automatically registered** and must be explicitly included based on requirements:
+- For `iota-node`: Modules use `AuthorityState` for internal state
+- For `iota-indexer`: Modules use `IndexerReader` for database access
+
+Each module implements the `IotaRpcModule` trait providing:
+- List of supported JSON-RPC methods
+- OpenRPC documentation
+
+## Building a JSON-RPC Server
+
+### Basic Example
+
+```rust
+use iota_json_rpc::JsonRpcServerBuilder;
+use std::net::SocketAddr;
+
+// Create a new JsonRpcServerBuilder with version info and Prometheus registry
+let mut builder = JsonRpcServerBuilder::new(
+    env!("CARGO_PKG_VERSION"),
+    prometheus::default_registry()
+);
+
+// Register the RPC modules that should be included in the server
+let reader = IndexerReader::new(env!("DATABASE_CONNECTION_URL"))?;
+builder.register_module(TransactionBuilderApi::new(reader.clone()))?;
+builder.register_module(GovernanceReadApi::new(reader.clone()))?;
+builder.register_module(CoinReadApi::new(reader.clone()))?;
+
+// Define the socket address for the server
+let default_socket_addr: SocketAddr = SocketAddr::new(
+    "0.0.0.0".parse().unwrap(),
+    9000,
+);
+
+// Specify a custom runtime for the server (optional)
+let custom_runtime: Option<tokio::runtime::Handle> = None;
+
+// Start the server
+builder
+    .start(default_socket_addr, custom_runtime, Some(ServerType::Http))
+    .await?;
+```
+
+### Key Components
+
+**JsonRpcServerBuilder**: Main builder for constructing the server
+- Takes version string and Prometheus registry
+- Registers modules via `register_module()`
+- Starts server with `start()`
+
+**ServerType**: Determines the transport protocol
+- `ServerType::Http`: HTTP-only server
+- `ServerType::WebSocket`: WebSocket-only server
+- `None`: Both HTTP and WebSocket
+
+## Available API Modules
+
+### Read APIs
+
+**ReadApi**: Core read operations
+- Get objects by ID
+- Query transaction blocks
+- Get checkpoint data
+- Protocol configuration
+- Chain identifier
+
+**IndexerApi**: Extended indexing queries
+- Search objects by filter
+- Query events
+- Transaction history for objects/addresses
+
+**CoinReadApi**: Coin and balance operations
+- Get all coins for an address
+- Get coin metadata
+- Get balance by coin type
+
+**GovernanceReadApi**: Governance information
+- Epoch data and validators
+- Staking information
+- Committee composition
+
+**MoveUtilsApi**: Move-specific utilities
+- Normalize struct tags
+- Resolve Move types
+
+### Write APIs
+
+**WriteApi**: Transaction execution
+- Execute signed transactions
+- Submit transactions to validators
+- Wait for transaction confirmation
+
+**TransactionBuilderApi**: Transaction construction
+- Build transfer transactions
+- Build Move call transactions
+- Build publish transactions
+- Split/merge coins
+
+## Usage in IOTA Components
+
+### In iota-indexer
+
+The indexer uses JSON-RPC to expose indexed data:
+
+```bash
+cargo run --bin iota-indexer -- \
+  --db-url "postgres://postgres:postgrespw@localhost/iota_indexer" \
+  json-rpc-service \
+  --rpc-client-url "http://0.0.0.0:9000" \
+  --rpc-address "0.0.0.0:9124"
+```
+
+Registered modules include:
+- `IndexerApi`: For querying indexed data
+- `CoinReadApi`: For coin queries
+- `GovernanceReadApi`: For governance data
+- `WriteApi`: For transaction execution (proxied to fullnode)
+
+### In iota-node
+
+Fullnodes and validators expose JSON-RPC APIs:
+
+**Fullnode APIs**:
+- All read APIs
+- Transaction execution APIs
+- Transaction builder APIs
+
+**Validator APIs**:
+- Read-only APIs
+- No transaction execution
+
+## Connection Examples
+
+### Using cURL
+
+```bash
+curl http://localhost:9124 \
+  --header 'content-type: application/json' \
+  --data '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "iota_getChainIdentifier",
+    "params": []
+  }'
+```
+
+### Using IOTA SDK (TypeScript)
+
+```typescript
+import { JsonRpcProvider } from '@iota/iota-sdk';
+
+const provider = new JsonRpcProvider('http://localhost:9124');
+
+const chainId = await provider.getChainIdentifier();
+console.log('Chain ID:', chainId);
+```
+
+### Using IOTA SDK (Rust)
+
+```rust
+use iota_sdk::IotaClientBuilder;
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = IotaClientBuilder::default()
+        .build("http://localhost:9124")
+        .await?;
+    
+    let chain_id = client.read_api().get_chain_identifier().await?;
+    println!("Chain ID: {}", chain_id);
+    
+    Ok(())
+}
+```
+
+## Configuration Options
+
+### Server Configuration
+
+- **Socket Address**: IP and port to bind
+- **Runtime**: Optional Tokio runtime handle
+- **Server Type**: HTTP, WebSocket, or both
+
+### Module Selection
+
+Choose which API modules to expose based on:
+- **Security requirements**: Limit exposed APIs
+- **Performance**: Reduce overhead by excluding unnecessary modules
+- **Functionality**: Match client needs
+
+## OpenRPC Documentation
+
+Each module provides OpenRPC specification for its methods:
+- Method names and parameters
+- Request/response schemas
+- Error codes and descriptions
+
+The specification is automatically generated and can be queried via the `rpc.discover` method.
+
+## Environment Variables
+
+Common environment variables:
+- `DATABASE_CONNECTION_URL`: Database URL for indexer modules
+- `RPC_TIMEOUT_SECS`: Request timeout in seconds
+- `MAX_CONCURRENT_REQUESTS`: Maximum concurrent requests
+
+## Best Practices
+
+1. **Module Selection**: Only register modules you need
+2. **Metrics**: Always provide a Prometheus registry for monitoring
+3. **Timeouts**: Configure appropriate request timeouts
+4. **Concurrency**: Set concurrency limits based on resources
+5. **Error Handling**: Implement proper error handling for all RPC methods
+
+## Common JSON-RPC Methods
+
+### Chain Information
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "iota_getChainIdentifier"
+}
+```
+
+### Get Object
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "iota_getObject",
+  "params": ["0x...objectid"]
+}
+```
+
+### Get Transaction
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "iota_getTransactionBlock",
+  "params": ["...digest..."]
+}
+```
+
+For complete API reference, see the [IOTA API documentation](https://docs.iota.org/iota-api-ref).

@@ -1,0 +1,737 @@
+---
+title: Kiosk Module
+description: Decentralized trading platform for safely buying and selling assets on IOTA
+---
+
+# Kiosk Module
+
+The `iota::kiosk` module provides a primitive for building safe, decentralized, and trustless trading experiences. It allows storing and trading any types of assets with guarantees of "true ownership" and creator control through Transfer Policies.
+
+Source: `crates/iota-framework/packages/iota-framework/sources/kiosk/kiosk.move`
+
+## Core Types
+
+### Kiosk
+
+A container for storing and trading assets:
+
+```move
+public struct Kiosk has key, store {
+    id: UID,
+    profits: Balance<IOTA>,
+    owner: address,
+    item_count: u32,
+}
+```
+
+### KioskOwnerCap
+
+Capability granting rights to manage a Kiosk:
+
+```move
+public struct KioskOwnerCap has key, store {
+    id: UID,
+    `for`: ID,
+}
+```
+
+### PurchaseCap
+
+Capability to purchase a specific item:
+
+```move
+public struct PurchaseCap<phantom T: key + store> has key, store {
+    id: UID,
+    kiosk_id: ID,
+    item_id: ID,
+    min_price: u64,
+}
+```
+
+## Creating a Kiosk
+
+### new
+
+Create a new kiosk and owner capability:
+
+<ParamField path="ctx" type="&mut TxContext" required>
+  Transaction context
+</ParamField>
+
+```move
+public fun new(ctx: &mut TxContext): (Kiosk, KioskOwnerCap)
+```
+
+Example:
+```move
+use iota::kiosk;
+
+public fun create_my_kiosk(ctx: &mut TxContext) {
+    let (kiosk, cap) = kiosk::new(ctx);
+    transfer::public_share_object(kiosk);
+    transfer::public_transfer(cap, ctx.sender());
+}
+```
+
+### default
+
+Convenience function to create and share a kiosk:
+
+<ParamField path="ctx" type="&mut TxContext" required>
+  Transaction context
+</ParamField>
+
+```move
+entry fun default(ctx: &mut TxContext)
+```
+
+## Item States
+
+Items in a Kiosk can be in different states:
+
+1. **Placed**: Freely tradeable and modifiable, can be taken out
+2. **Locked**: Cannot be taken, only traded or listed
+3. **Listed**: Available for purchase at a fixed price
+4. **Listed Exclusively**: Listed with a `PurchaseCap`, cannot be delisted without the cap
+
+## Managing Items
+
+### place
+
+Place an item into the kiosk:
+
+<ParamField path="self" type="&mut Kiosk" required>
+  Mutable reference to the kiosk
+</ParamField>
+
+<ParamField path="cap" type="&KioskOwnerCap" required>
+  Owner capability
+</ParamField>
+
+<ParamField path="item" type="T" required>
+  Item to place (must have key + store)
+</ParamField>
+
+```move
+public fun place<T: key + store>(self: &mut Kiosk, cap: &KioskOwnerCap, item: T)
+```
+
+Example:
+```move
+public struct NFT has key, store {
+    id: UID,
+    name: vector<u8>,
+}
+
+public fun place_nft(kiosk: &mut Kiosk, cap: &KioskOwnerCap, nft: NFT) {
+    kiosk::place(kiosk, cap, nft);
+}
+```
+
+### lock
+
+Place and lock an item (requires TransferPolicy to exist):
+
+<ParamField path="self" type="&mut Kiosk" required>
+  Mutable reference to the kiosk
+</ParamField>
+
+<ParamField path="cap" type="&KioskOwnerCap" required>
+  Owner capability
+</ParamField>
+
+<ParamField path="policy" type="&TransferPolicy<T>" required>
+  Transfer policy (ensures item can be sold)
+</ParamField>
+
+<ParamField path="item" type="T" required>
+  Item to lock
+</ParamField>
+
+```move
+public fun lock<T: key + store>(
+    self: &mut Kiosk,
+    cap: &KioskOwnerCap,
+    _policy: &TransferPolicy<T>,
+    item: T,
+)
+```
+
+Example:
+```move
+public fun lock_nft(
+    kiosk: &mut Kiosk,
+    cap: &KioskOwnerCap,
+    policy: &TransferPolicy<NFT>,
+    nft: NFT
+) {
+    kiosk::lock(kiosk, cap, policy, nft);
+}
+```
+
+### take
+
+Take an item out of the kiosk:
+
+<ParamField path="self" type="&mut Kiosk" required>
+  Mutable reference to the kiosk
+</ParamField>
+
+<ParamField path="cap" type="&KioskOwnerCap" required>
+  Owner capability
+</ParamField>
+
+<ParamField path="id" type="ID" required>
+  ID of the item to take
+</ParamField>
+
+```move
+public fun take<T: key + store>(self: &mut Kiosk, cap: &KioskOwnerCap, id: ID): T
+```
+
+Aborts if the item is locked or listed exclusively.
+
+Example:
+```move
+public fun take_nft(kiosk: &mut Kiosk, cap: &KioskOwnerCap, nft_id: ID): NFT {
+    kiosk::take(kiosk, cap, nft_id)
+}
+```
+
+## Listing and Purchasing
+
+### list
+
+List an item for sale at a fixed price:
+
+<ParamField path="self" type="&mut Kiosk" required>
+  Mutable reference to the kiosk
+</ParamField>
+
+<ParamField path="cap" type="&KioskOwnerCap" required>
+  Owner capability
+</ParamField>
+
+<ParamField path="id" type="ID" required>
+  ID of the item to list
+</ParamField>
+
+<ParamField path="price" type="u64" required>
+  Listing price in IOTA
+</ParamField>
+
+```move
+public fun list<T: key + store>(self: &mut Kiosk, cap: &KioskOwnerCap, id: ID, price: u64)
+```
+
+Example:
+```move
+public fun list_nft_for_sale(
+    kiosk: &mut Kiosk,
+    cap: &KioskOwnerCap,
+    nft_id: ID,
+    price: u64
+) {
+    kiosk::list<NFT>(kiosk, cap, nft_id, price);
+}
+```
+
+### place_and_list
+
+Convenience function to place and list in one call:
+
+<ParamField path="self" type="&mut Kiosk" required>
+  Mutable reference to the kiosk
+</ParamField>
+
+<ParamField path="cap" type="&KioskOwnerCap" required>
+  Owner capability
+</ParamField>
+
+<ParamField path="item" type="T" required>
+  Item to place and list
+</ParamField>
+
+<ParamField path="price" type="u64" required>
+  Listing price
+</ParamField>
+
+```move
+public fun place_and_list<T: key + store>(
+    self: &mut Kiosk,
+    cap: &KioskOwnerCap,
+    item: T,
+    price: u64,
+)
+```
+
+### delist
+
+Remove a listing (item stays in kiosk):
+
+<ParamField path="self" type="&mut Kiosk" required>
+  Mutable reference to the kiosk
+</ParamField>
+
+<ParamField path="cap" type="&KioskOwnerCap" required>
+  Owner capability
+</ParamField>
+
+<ParamField path="id" type="ID" required>
+  ID of the item to delist
+</ParamField>
+
+```move
+public fun delist<T: key + store>(self: &mut Kiosk, cap: &KioskOwnerCap, id: ID)
+```
+
+### purchase
+
+Purchase a listed item:
+
+<ParamField path="self" type="&mut Kiosk" required>
+  Mutable reference to the kiosk
+</ParamField>
+
+<ParamField path="id" type="ID" required>
+  ID of the item to purchase
+</ParamField>
+
+<ParamField path="payment" type="Coin<IOTA>" required>
+  Payment coin (must match exact price)
+</ParamField>
+
+```move
+public fun purchase<T: key + store>(
+    self: &mut Kiosk,
+    id: ID,
+    payment: Coin<IOTA>,
+): (T, TransferRequest<T>)
+```
+
+Returns the item and a `TransferRequest` that must be resolved with a `TransferPolicy`.
+
+Example:
+```move
+use iota::transfer_policy;
+
+public fun buy_nft(
+    kiosk: &mut Kiosk,
+    nft_id: ID,
+    payment: Coin<IOTA>,
+    policy: &TransferPolicy<NFT>,
+    ctx: &mut TxContext
+) {
+    let (nft, request) = kiosk::purchase<NFT>(kiosk, nft_id, payment);
+    
+    // Confirm the transfer request with the policy
+    transfer_policy::confirm_request(policy, request);
+    
+    // Transfer the NFT to the buyer
+    transfer::public_transfer(nft, ctx.sender());
+}
+```
+
+## Exclusive Listing with PurchaseCap
+
+### list_with_purchase_cap
+
+List an item exclusively with a purchase capability:
+
+<ParamField path="self" type="&mut Kiosk" required>
+  Mutable reference to the kiosk
+</ParamField>
+
+<ParamField path="cap" type="&KioskOwnerCap" required>
+  Owner capability
+</ParamField>
+
+<ParamField path="id" type="ID" required>
+  ID of the item to list
+</ParamField>
+
+<ParamField path="min_price" type="u64" required>
+  Minimum acceptable price
+</ParamField>
+
+<ParamField path="ctx" type="&mut TxContext" required>
+  Transaction context
+</ParamField>
+
+```move
+public fun list_with_purchase_cap<T: key + store>(
+    self: &mut Kiosk,
+    cap: &KioskOwnerCap,
+    id: ID,
+    min_price: u64,
+    ctx: &mut TxContext,
+): PurchaseCap<T>
+```
+
+Example:
+```move
+public fun create_exclusive_listing(
+    kiosk: &mut Kiosk,
+    cap: &KioskOwnerCap,
+    nft_id: ID,
+    min_price: u64,
+    ctx: &mut TxContext
+): PurchaseCap<NFT> {
+    kiosk::list_with_purchase_cap<NFT>(kiosk, cap, nft_id, min_price, ctx)
+}
+```
+
+### purchase_with_cap
+
+Purchase using a purchase capability:
+
+<ParamField path="self" type="&mut Kiosk" required>
+  Mutable reference to the kiosk
+</ParamField>
+
+<ParamField path="purchase_cap" type="PurchaseCap<T>" required>
+  Purchase capability
+</ParamField>
+
+<ParamField path="payment" type="Coin<IOTA>" required>
+  Payment (must be >= min_price)
+</ParamField>
+
+```move
+public fun purchase_with_cap<T: key + store>(
+    self: &mut Kiosk,
+    purchase_cap: PurchaseCap<T>,
+    payment: Coin<IOTA>,
+): (T, TransferRequest<T>)
+```
+
+### return_purchase_cap
+
+Return a purchase capability and delist the item:
+
+<ParamField path="self" type="&mut Kiosk" required>
+  Mutable reference to the kiosk
+</ParamField>
+
+<ParamField path="purchase_cap" type="PurchaseCap<T>" required>
+  Purchase capability to return
+</ParamField>
+
+```move
+public fun return_purchase_cap<T: key + store>(self: &mut Kiosk, purchase_cap: PurchaseCap<T>)
+```
+
+## Borrowing Items
+
+### borrow
+
+Immutably borrow an item:
+
+<ParamField path="self" type="&Kiosk" required>
+  Reference to the kiosk
+</ParamField>
+
+<ParamField path="cap" type="&KioskOwnerCap" required>
+  Owner capability
+</ParamField>
+
+<ParamField path="id" type="ID" required>
+  ID of the item to borrow
+</ParamField>
+
+```move
+#[syntax(index)]
+public fun borrow<T: key + store>(self: &Kiosk, cap: &KioskOwnerCap, id: ID): &T
+```
+
+### borrow_mut
+
+Mutably borrow an item (item must not be listed):
+
+<ParamField path="self" type="&mut Kiosk" required>
+  Mutable reference to the kiosk
+</ParamField>
+
+<ParamField path="cap" type="&KioskOwnerCap" required>
+  Owner capability
+</ParamField>
+
+<ParamField path="id" type="ID" required>
+  ID of the item to borrow
+</ParamField>
+
+```move
+#[syntax(index)]
+public fun borrow_mut<T: key + store>(self: &mut Kiosk, cap: &KioskOwnerCap, id: ID): &mut T
+```
+
+### borrow_val
+
+Borrow an item by value with guarantee to return it:
+
+<ParamField path="self" type="&mut Kiosk" required>
+  Mutable reference to the kiosk
+</ParamField>
+
+<ParamField path="cap" type="&KioskOwnerCap" required>
+  Owner capability
+</ParamField>
+
+<ParamField path="id" type="ID" required>
+  ID of the item to borrow
+</ParamField>
+
+```move
+public fun borrow_val<T: key + store>(self: &mut Kiosk, cap: &KioskOwnerCap, id: ID): (T, Borrow)
+```
+
+Returns the item and a `Borrow` hot potato that enforces return.
+
+### return_val
+
+Return a borrowed item:
+
+<ParamField path="self" type="&mut Kiosk" required>
+  Mutable reference to the kiosk
+</ParamField>
+
+<ParamField path="item" type="T" required>
+  Item to return
+</ParamField>
+
+<ParamField path="borrow" type="Borrow" required>
+  Borrow hot potato from borrow_val
+</ParamField>
+
+```move
+public fun return_val<T: key + store>(self: &mut Kiosk, item: T, borrow: Borrow)
+```
+
+## Profit Management
+
+### withdraw
+
+Withdraw profits from the kiosk:
+
+<ParamField path="self" type="&mut Kiosk" required>
+  Mutable reference to the kiosk
+</ParamField>
+
+<ParamField path="cap" type="&KioskOwnerCap" required>
+  Owner capability
+</ParamField>
+
+<ParamField path="amount" type="Option<u64>" required>
+  Amount to withdraw (None = all)
+</ParamField>
+
+<ParamField path="ctx" type="&mut TxContext" required>
+  Transaction context
+</ParamField>
+
+```move
+public fun withdraw(
+    self: &mut Kiosk,
+    cap: &KioskOwnerCap,
+    amount: Option<u64>,
+    ctx: &mut TxContext,
+): Coin<IOTA>
+```
+
+Example:
+```move
+public fun withdraw_all_profits(
+    kiosk: &mut Kiosk,
+    cap: &KioskOwnerCap,
+    ctx: &mut TxContext
+): Coin<IOTA> {
+    kiosk::withdraw(kiosk, cap, option::none(), ctx)
+}
+
+public fun withdraw_partial(
+    kiosk: &mut Kiosk,
+    cap: &KioskOwnerCap,
+    amount: u64,
+    ctx: &mut TxContext
+): Coin<IOTA> {
+    kiosk::withdraw(kiosk, cap, option::some(amount), ctx)
+}
+```
+
+## Query Functions
+
+### has_item
+
+Check if kiosk contains an item:
+
+```move
+public fun has_item(self: &Kiosk, id: ID): bool
+```
+
+### has_item_with_type
+
+Check if kiosk contains an item of specific type:
+
+```move
+public fun has_item_with_type<T: key + store>(self: &Kiosk, id: ID): bool
+```
+
+### is_locked
+
+Check if an item is locked:
+
+```move
+public fun is_locked(self: &Kiosk, id: ID): bool
+```
+
+### is_listed
+
+Check if an item is listed:
+
+```move
+public fun is_listed(self: &Kiosk, id: ID): bool
+```
+
+### is_listed_exclusively
+
+Check if an item has a PurchaseCap issued:
+
+```move
+public fun is_listed_exclusively(self: &Kiosk, id: ID): bool
+```
+
+### item_count
+
+Get the number of items in the kiosk:
+
+```move
+public fun item_count(self: &Kiosk): u32
+```
+
+### profits_amount
+
+Get the amount of profits:
+
+```move
+public fun profits_amount(self: &Kiosk): u64
+```
+
+### owner
+
+Get the owner address:
+
+```move
+public fun owner(self: &Kiosk): address
+```
+
+## Complete Example: NFT Marketplace
+
+```move
+module example::nft_marketplace {
+    use iota::kiosk::{Self, Kiosk, KioskOwnerCap};
+    use iota::transfer_policy::{Self, TransferPolicy, TransferRequest};
+    use iota::coin::Coin;
+    use iota::iota::IOTA;
+    use iota::object::{Self, ID, UID};
+    use iota::transfer;
+    use iota::tx_context::TxContext;
+
+    public struct ArtNFT has key, store {
+        id: UID,
+        title: vector<u8>,
+        artist: address,
+        url: vector<u8>,
+    }
+
+    public fun create_marketplace(ctx: &mut TxContext): KioskOwnerCap {
+        let (kiosk, cap) = kiosk::new(ctx);
+        transfer::public_share_object(kiosk);
+        cap
+    }
+
+    public fun mint_and_list(
+        title: vector<u8>,
+        url: vector<u8>,
+        kiosk: &mut Kiosk,
+        cap: &KioskOwnerCap,
+        price: u64,
+        ctx: &mut TxContext
+    ) {
+        let nft = ArtNFT {
+            id: object::new(ctx),
+            title,
+            artist: ctx.sender(),
+            url,
+        };
+        
+        kiosk::place_and_list(kiosk, cap, nft, price);
+    }
+
+    public fun buy_nft(
+        kiosk: &mut Kiosk,
+        nft_id: ID,
+        payment: Coin<IOTA>,
+        policy: &TransferPolicy<ArtNFT>,
+        ctx: &mut TxContext
+    ) {
+        let (nft, request) = kiosk::purchase<ArtNFT>(kiosk, nft_id, payment);
+        transfer_policy::confirm_request(policy, request);
+        transfer::public_transfer(nft, ctx.sender());
+    }
+
+    public fun update_price(
+        kiosk: &mut Kiosk,
+        cap: &KioskOwnerCap,
+        nft_id: ID,
+        new_price: u64
+    ) {
+        kiosk::delist<ArtNFT>(kiosk, cap, nft_id);
+        kiosk::list<ArtNFT>(kiosk, cap, nft_id, new_price);
+    }
+
+    public fun collect_profits(
+        kiosk: &mut Kiosk,
+        cap: &KioskOwnerCap,
+        ctx: &mut TxContext
+    ): Coin<IOTA> {
+        kiosk::withdraw(kiosk, cap, option::none(), ctx)
+    }
+}
+```
+
+## Events
+
+The module emits events for tracking:
+
+```move
+public struct ItemListed<phantom T: key + store> has copy, drop {
+    kiosk: ID,
+    id: ID,
+    price: u64,
+}
+
+public struct ItemPurchased<phantom T: key + store> has copy, drop {
+    kiosk: ID,
+    id: ID,
+    price: u64,
+}
+
+public struct ItemDelisted<phantom T: key + store> has copy, drop {
+    kiosk: ID,
+    id: ID,
+}
+```
+
+## Best Practices
+
+1. **Always share kiosks**: Kiosks should be shared objects for public access
+
+2. **Use Transfer Policies**: Create Transfer Policies for your NFTs to enforce royalties
+
+3. **Lock valuable items**: Use `lock` for items that should never leave the kiosk
+
+4. **Be careful with PurchaseCap**: Only use in trusted applications as losing it locks the item
+
+5. **Check item state**: Use query functions before operations to avoid aborts
+
+6. **Handle TransferRequest**: Always resolve the TransferRequest from purchases
