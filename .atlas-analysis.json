@@ -1,0 +1,229 @@
+{
+  "projectType": "infrastructure",
+  "projectName": "IOTA",
+  "projectDescription": "A scalable, decentralized and programmable DLT infrastructure powered by Move",
+  "theme": "aspen",
+  "primaryColor": "#131F37",
+  "lightColor": "#6C93CB",
+  "darkColor": "#0A1929",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/move-language",
+              "concepts/objects-and-ownership",
+              "concepts/transactions",
+              "concepts/consensus",
+              "concepts/gas-and-fees"
+            ]
+          },
+          {
+            "group": "Building on IOTA",
+            "pages": [
+              "building/setup-environment",
+              "building/first-move-package",
+              "building/testing-debugging",
+              "building/move-framework",
+              "building/best-practices"
+            ]
+          },
+          {
+            "group": "Node Operations",
+            "pages": [
+              "nodes/run-full-node",
+              "nodes/run-validator",
+              "nodes/configuration",
+              "nodes/monitoring",
+              "nodes/troubleshooting"
+            ]
+          },
+          {
+            "group": "Network Services",
+            "pages": [
+              "services/indexer",
+              "services/graphql-rpc",
+              "services/json-rpc",
+              "services/faucet",
+              "services/data-ingestion"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "TypeScript SDK",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "sdk/typescript/installation",
+              "sdk/typescript/quickstart",
+              "sdk/typescript/client-setup"
+            ]
+          },
+          {
+            "group": "Core Functionality",
+            "pages": [
+              "sdk/typescript/reading-data",
+              "sdk/typescript/transactions",
+              "sdk/typescript/signing",
+              "sdk/typescript/events"
+            ]
+          },
+          {
+            "group": "Advanced Features",
+            "pages": [
+              "sdk/typescript/graphql-transport",
+              "sdk/typescript/multisig",
+              "sdk/typescript/sponsored-transactions"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "sdk/typescript/api-reference",
+              "sdk/typescript/examples"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI Tools",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "cli/introduction",
+              "cli/installation"
+            ]
+          },
+          {
+            "group": "Commands",
+            "pages": [
+              "cli/client-commands",
+              "cli/move-commands",
+              "cli/keytool",
+              "cli/genesis-commands"
+            ]
+          },
+          {
+            "group": "Development Tools",
+            "pages": [
+              "cli/local-network",
+              "cli/testing",
+              "cli/transaction-builder"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Move Framework",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "move/introduction",
+              "move/standard-library"
+            ]
+          },
+          {
+            "group": "Core Modules",
+            "pages": [
+              "move/modules/object",
+              "move/modules/transfer",
+              "move/modules/coin",
+              "move/modules/balance",
+              "move/modules/clock",
+              "move/modules/event"
+            ]
+          },
+          {
+            "group": "Advanced Modules",
+            "pages": [
+              "move/modules/dynamic-fields",
+              "move/modules/table",
+              "move/modules/bag",
+              "move/modules/kiosk"
+            ]
+          },
+          {
+            "group": "Patterns",
+            "pages": [
+              "move/patterns/capability",
+              "move/patterns/witness",
+              "move/patterns/hot-potato"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "JSON-RPC API",
+            "pages": [
+              "api/json-rpc/overview",
+              "api/json-rpc/read-api",
+              "api/json-rpc/write-api",
+              "api/json-rpc/coin-api",
+              "api/json-rpc/governance-api"
+            ]
+          },
+          {
+            "group": "GraphQL API",
+            "pages": [
+              "api/graphql/overview",
+              "api/graphql/queries",
+              "api/graphql/mutations",
+              "api/graphql/examples"
+            ]
+          },
+          {
+            "group": "REST APIs",
+            "pages": [
+              "api/rest/overview",
+              "api/rest/endpoints"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Asset-oriented programming with Move language",
+    "Scalable distributed ledger with Byzantine consensus",
+    "TypeScript SDK with comprehensive transaction building",
+    "GraphQL and JSON-RPC APIs for flexible data access",
+    "Full-featured CLI for development and operations",
+    "Indexer infrastructure for efficient data querying",
+    "Native support for complex object ownership models",
+    "Developer-friendly framework with extensive Move standard library"
+  ],
+  "publicApiSurface": [
+    "iota CLI - Main command-line interface",
+    "IotaClient (TypeScript) - Primary SDK client",
+    "Transaction builder API",
+    "JSON-RPC endpoints (Read, Write, Coin, Governance APIs)",
+    "GraphQL queries and mutations",
+    "iota-node - Validator and full node binary",
+    "iota-indexer - Data indexing service",
+    "iota-graphql-rpc - GraphQL server",
+    "iota-faucet - Token faucet service",
+    "Move Framework modules (object, transfer, coin, balance, etc.)",
+    "Keypair management (Ed25519, Secp256k1, Secp256r1)",
+    "BCS serialization utilities",
+    "Event subscription APIs"
+  ]
+}
